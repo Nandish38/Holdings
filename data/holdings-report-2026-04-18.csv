@@ -1,0 +1,10 @@
+Account Name,Account Type,Account Classification,Account Number,Symbol,Exchange,MIC,Name,Security Type,Quantity,Position Direction,Market Price,Market Price Currency,Book Value (CAD),Book Value Currency (CAD),Book Value (Market),Book Value Currency (Market),Market Value,Market Value Currency,Market Unrealized Returns,Market Unrealized Returns Currency
+"FHSA","FHSA","Self-Directed","HQ9CZKN60CAD","META","TSX","XTSE","Meta CDR (CAD Hedged)","EQUITY","2.0084","LONG","36.8000","CAD","58.43","CAD","58.43","CAD","73.90912","CAD","15.47912","CAD"
+"FHSA","FHSA","Self-Directed","HQ9CZKN60CAD","QQC","TSX","XTSE","Invesco NASDAQ 100 Index ETF","EXCHANGE_TRADED_FUND","1.6839","LONG","43.3900","CAD","70","CAD","70","CAD","73.064421","CAD","3.064421","CAD"
+"FHSA","FHSA","Self-Directed","HQ9CZKN60CAD","VFV","TSX","XTSE","Vanguard Investments Canada Inc. - S&P 500 Index ETF","EXCHANGE_TRADED_FUND","1.6979","LONG","172.9900","CAD","274.97","CAD","274.97","CAD","293.719721","CAD","18.749721","CAD"
+"TFSA","TFSA","Self-Directed","HQ50ST4K9CAD","QQC","TSX","XTSE","Invesco NASDAQ 100 Index ETF","EXCHANGE_TRADED_FUND","5.5221","LONG","43.3900","CAD","179.02","CAD","179.02","CAD","239.603919","CAD","60.583919","CAD"
+"TFSA","TFSA","Self-Directed","HQ50ST4K9CAD","QQQ","NASDAQ","XNAS","Invesco QQQ Trust - Series 1","EXCHANGE_TRADED_FUND","0.6415","LONG","648.8500","USD","368.74","CAD","264.52193758163701","USD","416.237275","USD","151.71533741836299","USD"
+"TFSA","TFSA","Self-Directed","HQ50ST4K9CAD","SFM","NASDAQ","XNAS","Sprouts Farmers Market Inc","EQUITY","0.4484","LONG","73.8976","USD","99.47","CAD","71.98477370424513","USD","33.13568384","USD","-38.84908986424513","USD"
+"TFSA","TFSA","Self-Directed","HQ50ST4K9CAD","VFV","TSX","XTSE","Vanguard Investments Canada Inc. - S&P 500 Index ETF","EXCHANGE_TRADED_FUND","5.9467","LONG","172.9900","CAD","884.96","CAD","884.96","CAD","1028.719633","CAD","143.759633","CAD"
+
+"As of 2026-04-18 22:09 GMT-04:00"
