@@ -19,6 +19,17 @@ import streamlit as st
 from plotly.colors import sample_colorscale
 from dotenv import load_dotenv
 
+from ui_theme import (  # noqa: E402
+    REVEAL_KEY,
+    holdings_table_for_display,
+    inject_vault_css,
+    mask_cad,
+    mask_plain,
+    mask_signed_cad,
+    reveal_balances,
+    watchlist_table_for_display,
+)
+
 _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -40,6 +51,7 @@ from us_market_watch import (  # noqa: E402
 
 
 def _render_major_indices_strip() -> None:
+    rev = reveal_balances()
     rows = fetch_major_indices()
     c1, c2, c3 = st.columns(3)
     for col, r in zip((c1, c2, c3), rows):
@@ -51,14 +63,11 @@ def _render_major_indices_strip() -> None:
                 st.metric(nm, "—")
             else:
                 ccy = (r.get("ccy") or "").strip()
-                suf = f" {ccy}" if ccy else ""
-                st.metric(
-                    nm,
-                    f"{float(px):,.2f}{suf}",
-                    f"{float(chg):+.2f}%" if chg is not None else None,
-                )
+                suf = f" {ccy}" if ccy and rev else ""
+                val = mask_plain(float(px), reveal=rev, decimals=2) + (suf if rev else "")
+                st.metric(nm, val, f"{float(chg):+.2f}%" if chg is not None else None)
     st.caption(
-        f"Yahoo · vs prior daily close · {index_strip_updated_at()} · not real-time; exchange rules & vendor delay apply."
+        f"Pulse · Yahoo · {index_strip_updated_at()} · vendor delay applies"
     )
 
 
@@ -153,7 +162,7 @@ def _u_from_returns(ret: pd.Series) -> np.ndarray:
     return np.clip(u, 0.0, 1.0)
 
 
-def pie_holdings_colored_by_return(sub: pd.DataFrame, title: str) -> go.Figure:
+def pie_holdings_colored_by_return(sub: pd.DataFrame, title: str, *, reveal: bool) -> go.Figure:
     fig = go.Figure()
     if sub is None or sub.empty:
         fig.update_layout(title=dict(text=title), annotations=[dict(text="No rows", showarrow=False, x=0.5, y=0.5)])
@@ -166,16 +175,22 @@ def pie_holdings_colored_by_return(sub: pd.DataFrame, title: str) -> go.Figure:
     r = sub["ret_pct"]
     u = _u_from_returns(r)
     colors = [sample_colorscale("RdYlGn", float(ui))[0] for ui in u]
+    if reveal:
+        tinfo = "label+percent"
+        ht = "<b>%{label}</b><br>MV (CAD): %{value:,.2f}<br>Return vs MV: %{customdata:.2f}%<extra></extra>"
+    else:
+        tinfo = "percent"
+        ht = "<b>%{label}</b><br>Weight: %{percent}<br>Return vs MV: %{customdata:.2f}%<extra></extra>"
     fig.add_trace(
         go.Pie(
             labels=sub["pie_label"],
             values=sub["market_value_cad"],
             marker=dict(colors=colors, line=dict(color="#1a1a1a", width=0.6)),
             hole=0.38,
-            textinfo="label+percent",
+            textinfo=tinfo,
             textposition="outside",
             insidetextorientation="horizontal",
-            hovertemplate="<b>%{label}</b><br>MV (CAD): %{value:,.2f}<br>Unrealized vs MV: %{customdata:.2f}%<extra></extra>",
+            hovertemplate=ht,
             customdata=r.astype(float),
             sort=False,
         )
@@ -190,16 +205,44 @@ def pie_holdings_colored_by_return(sub: pd.DataFrame, title: str) -> go.Figure:
     return fig
 
 
+def pie_accounts_vault(acct: pd.DataFrame, *, reveal: bool) -> go.Figure:
+    if acct is None or acct.empty:
+        return go.Figure()
+    fig = px.pie(acct, names="label", values="market_value_cad", hole=0.42, title="Chamber · by vault")
+    if not reveal:
+        fig.update_traces(
+            textinfo="percent",
+            hovertemplate="<b>%{label}</b><br>Share: %{percent}<extra></extra>",
+        )
+    else:
+        fig.update_traces(
+            textinfo="label+percent",
+            hovertemplate="<b>%{label}</b><br>CAD: %{value:,.0f}<br>%{percent}<extra></extra>",
+        )
+    fig.update_layout(margin=dict(t=36, b=0, l=0, r=0), showlegend=True, legend_font_size=10)
+    return fig
+
+
 def render_flag(f: Flag) -> None:
     icon = {"info": "•", "warn": "!", "alert": "!!"}.get(f.severity, "•")
     st.markdown(f"**{icon} {f.title}** — {f.detail}")
 
 
 def main() -> None:
-    st.set_page_config(page_title="Holdings", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="Vaultboard", layout="wide", initial_sidebar_state="expanded", page_icon="◈")
     default_csv = _ROOT / "data" / "holdings-report-2026-04-18.csv"
 
-    st.title("Holdings")
+    if REVEAL_KEY not in st.session_state:
+        st.session_state[REVEAL_KEY] = False
+    inject_vault_css()
+
+    top_l, _, top_r = st.columns([5, 2, 2])
+    with top_l:
+        st.markdown("## ◈ Vaultboard")
+        st.caption("composition · risk · pulse — not advice")
+    with top_r:
+        st.toggle("Show balances", key=REVEAL_KEY, help="Off = dollar amounts hidden in Chamber & Pulse")
+    reveal = reveal_balances()
 
     ctx = session_context_for_today()
     c1, c2, c3, c4 = st.columns(4)
@@ -209,7 +252,7 @@ def main() -> None:
     c4.metric("Next session", ctx["next_joint_session"] or "—")
 
     with st.sidebar:
-        st.markdown("### File")
+        st.markdown("### Ingest")
         uploaded = st.file_uploader("CSV", type=["csv"], label_visibility="collapsed")
         path_str = st.text_input(
             "Path",
@@ -217,7 +260,7 @@ def main() -> None:
             placeholder="path/to/holdings.csv",
             label_visibility="collapsed",
         )
-        st.markdown("### FX")
+        st.markdown("### FX blend")
         usd_cad = st.slider("USD→CAD", 0.5, 2.5, 1.38, 0.01)
 
     path = Path(path_str) if path_str.strip() else default_csv
@@ -265,8 +308,8 @@ def main() -> None:
         )
 
     with st.sidebar:
-        st.markdown("### Snapshot")
-        if st.button("Save today (ET)"):
+        st.markdown("### Stamp")
+        if st.button("Stamp today (ET)"):
             upsert_snapshot(
                 now_et().date(),
                 total_cad,
@@ -278,59 +321,78 @@ def main() -> None:
             )
             st.sidebar.success("OK")
 
+    with st.expander("Room map", expanded=False):
+        st.markdown(
+            "**Chamber** = your lines & halos · **Pulse** = indices & watchlist · **Memory** = stamped curve · "
+            "**Orbit** = exchange calendar · **Signal** = risk flags · **Horizon** = targets & flow."
+        )
+
     tab_over, tab_us, tab_hist, tab_mkt, tab_ai, tab_goals = st.tabs(
-        ["Portfolio", "Watchlist", "History", "Calendar", "Flags", "Goals"]
+        ["Chamber", "Pulse", "Memory", "Orbit", "Signal", "Horizon"]
     )
 
     with tab_over:
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Positions", str(len(df)))
-        m2.metric("Approx total MV (CAD)", f"${total_cad:,.0f}")
-        ur = df["Market Unrealized Returns"].sum(skipna=True)
-        m3.metric("Unrealized Σ", f"{ur:,.0f}")
-
-        roll = rollup_symbols_by_return(df, usd_cad)
+        lens = st.radio(
+            "Chamber lens",
+            ["All", "FHSA", "TFSA"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="vault_lens",
+        )
+        if lens != "All" and "Account Name" in df.columns:
+            df_v = df[df["Account Name"].astype(str).str.upper() == lens.upper()].copy()
+        else:
+            df_v = df
+        if df_v.empty:
+            df_v = df
+        chamber_total = approx_total_market_value_cad(df_v, usd_cad)
+        acct_v = account_market_value_cad(df_v, usd_cad)
+        sym_v = symbol_weight_cad(df_v, usd_cad)
+        roll = rollup_symbols_by_return(df_v, usd_cad)
         stx = roll[roll["Security_Type"].map(_is_equity_type)].copy()
         etf = roll[roll["Security_Type"].map(_is_etf_type)].copy()
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Lines", str(len(df_v)))
+        m2.metric("Book (CAD)", mask_cad(chamber_total, reveal=reveal))
+        ur_v = df_v["Market Unrealized Returns"].sum(skipna=True) if "Market Unrealized Returns" in df_v.columns else 0.0
+        m3.metric("Unrealized Σ", mask_plain(float(ur_v), reveal=reveal, decimals=2))
+
         st.caption(
-            "Pies: slice size = CAD market value. Colour = unrealized return % vs MV **within that chart** "
-            "(RdYlGn: worst→red, best→green; negatives sit on the red side when losses exist)."
+            "Colour = return vs line MV inside each halo · **Lens** narrows Chamber only (snapshots & goals still full book)."
         )
         ra, rb = st.columns(2)
         with ra:
-            fig_a = px.pie(acct, names="label", values="market_value_cad", hole=0.4, title="Accounts")
-            fig_a.update_layout(margin=dict(t=30, b=0, l=0, r=0), showlegend=True, legend_font_size=11)
-            st.plotly_chart(fig_a, use_container_width=True)
+            st.plotly_chart(pie_accounts_vault(acct_v, reveal=reveal), use_container_width=True)
         with rb:
             st.plotly_chart(
-                pie_holdings_colored_by_return(stx, "Stocks — every name"),
+                pie_holdings_colored_by_return(stx, "Equities — every name", reveal=reveal),
                 use_container_width=True,
             )
         st.plotly_chart(
-            pie_holdings_colored_by_return(etf, "ETFs — every name"),
+            pie_holdings_colored_by_return(etf, "Funds — every name", reveal=reveal),
             use_container_width=True,
         )
-        fig_s = px.bar(sym.head(12), x="Symbol", y="weight_pct", title="Weights %")
+        fig_s = px.bar(sym_v.head(12), x="Symbol", y="weight_pct", title="Weight in Chamber %")
         fig_s.update_layout(xaxis_title=None, yaxis_title="%", margin=dict(t=40, b=0, l=0, r=0))
         st.plotly_chart(fig_s, use_container_width=True)
 
-        st.markdown("**Lines**")
-        show = df[
-            [
-                c
-                for c in [
-                    "Account Name",
-                    "Symbol",
-                    "Name",
-                    "Security Type",
-                    "Quantity",
-                    "mv_ccy",
-                    "Market Value",
-                    "Market Unrealized Returns",
-                ]
-                if c in df.columns
+        st.markdown("**Ledger**")
+        show_cols = [
+            c
+            for c in [
+                "Account Name",
+                "Symbol",
+                "Name",
+                "Security Type",
+                "Quantity",
+                "mv_ccy",
+                "Market Value",
+                "Market Unrealized Returns",
             ]
+            if c in df_v.columns
         ]
+        show = holdings_table_for_display(df_v[show_cols], reveal=reveal)
         st.dataframe(show, use_container_width=True, hide_index=True, height=320)
 
     with tab_us:
@@ -376,7 +438,11 @@ def main() -> None:
         if watch is None or watch.empty:
             st.info("No rows (network or rate limit). Try Refresh again.")
         else:
-            st.dataframe(watch, use_container_width=True, hide_index=True)
+            st.dataframe(
+                watchlist_table_for_display(watch, reveal=reveal),
+                use_container_width=True,
+                hide_index=True,
+            )
             bar_x = sort_by if sort_by in watch.columns else "1M %"
             color_col = "1M %" if "1M %" in watch.columns else bar_x
             fig_m = px.bar(
@@ -392,30 +458,42 @@ def main() -> None:
             st.plotly_chart(fig_m, use_container_width=True)
 
     with tab_hist:
-        with st.expander("How history is built"):
-            st.write("Snapshots in `portfolio_snapshots.json`. CSV “As of” dates save automatically; sidebar **Save today** adds today.")
+        with st.expander("How Memory is built"):
+            st.write("Snapshots in `portfolio_snapshots.json`. CSV “As of” dates stamp automatically; sidebar **Stamp today** adds today.")
 
         rows = load_snapshots(snapshots_path)
         hist = snapshots_to_dataframe(rows)
         if hist.empty or "total_market_value_cad" not in hist.columns:
-            st.info("No history yet. Load a holdings CSV with an “As of …” footer, or record a manual snapshot.")
+            st.info("No history yet. Load a holdings CSV with an “As of …” footer, or stamp a day.")
         else:
             hx = hist.copy()
             hx["date"] = pd.to_datetime(hx["date"], errors="coerce")
             hx = hx.dropna(subset=["date"]).sort_values("date")
+            if reveal:
+                ycol = "total_market_value_cad"
+                ttl = "Total MV (CAD)"
+            else:
+                base = float(hx["total_market_value_cad"].iloc[0]) or 1.0
+                hx["_idx"] = hx["total_market_value_cad"].astype(float) / base * 100.0
+                ycol = "_idx"
+                ttl = "Indexed path (first day = 100)"
             fig_l = px.line(
                 hx,
                 x="date",
-                y="total_market_value_cad",
+                y=ycol,
                 markers=True,
-                title="Total MV (CAD)",
-                hover_data=["source", "usd_cad"],
+                title=ttl,
+                hover_data=["source", "usd_cad"] if reveal else ["source"],
             )
             fig_l.update_layout(margin=dict(t=40, b=0, l=0, r=0))
+            if not reveal:
+                fig_l.update_traces(hovertemplate="<b>%{x}</b><br>Index: %{y:.2f}<extra></extra>")
             st.plotly_chart(fig_l, use_container_width=True)
             show_h = hx.assign(date=lambda d: d["date"].dt.date.astype(str))[
                 ["date", "total_market_value_cad", "usd_cad", "source", "recorded_at"]
             ]
+            if not reveal:
+                show_h["total_market_value_cad"] = "·······"
             st.dataframe(show_h, use_container_width=True, hide_index=True)
 
     with tab_mkt:
@@ -484,14 +562,16 @@ def main() -> None:
         st.subheader("Monthly deposit (model)")
         if tgt_pv > 0:
             gap = tgt_pv - total_cad
-            st.caption(f"Now **${total_cad:,.0f}** · gap **${gap:,.0f}** · **{months_goal}** mo")
+            st.caption(
+                f"Now **{mask_cad(total_cad, reveal=reveal)}** · gap **{mask_cad(gap, reveal=reveal)}** · **{months_goal}** mo"
+            )
             pay, warn = monthly_contribution(
                 current_value=total_cad,
                 target_value=float(tgt_pv),
                 months=int(months_goal),
                 annual_return_pct=float(tgt_ret),
             )
-            st.metric("Monthly (CAD)", f"${pay:,.0f}")
+            st.metric("Monthly (CAD)", mask_cad(pay, reveal=reveal, decimals=0))
             if warn:
                 st.warning(warn)
         else:
@@ -501,7 +581,7 @@ def main() -> None:
         if tgt_pv > 0:
             pct = min(100.0, max(0.0, total_cad / tgt_pv * 100.0))
             st.progress(min(1.0, pct / 100.0))
-            st.caption(f"{pct:.1f}% of ${tgt_pv:,.0f}")
+            st.caption(f"{pct:.1f}% of {mask_cad(tgt_pv, reveal=reveal)}")
         else:
             st.caption("Set a target.")
 
@@ -534,7 +614,7 @@ def main() -> None:
             tgt = st.number_input(label, min_value=0.0, value=prev, step=500.0, key=f"acct_tgt_{label}")
             if tgt > 0:
                 new_at[label] = tgt
-                st.caption(f"${cur:,.0f} → {min(100.0, cur / tgt * 100.0):.0f}%")
+                st.caption(f"{mask_cad(cur, reveal=reveal)} → {min(100.0, cur / tgt * 100.0):.0f}%")
 
         if st.button("Save account targets"):
             goals.account_targets_cad = new_at

@@ -1,8 +1,8 @@
 [theme]
 base = "dark"
-primaryColor = "#3dd68c"
-backgroundColor = "#0e1117"
-secondaryBackgroundColor = "#161b22"
+primaryColor = "#c4b5fd"
+backgroundColor = "#07060d"
+secondaryBackgroundColor = "#12101c"
 
 [client]
 toolbarMode = "minimal"
