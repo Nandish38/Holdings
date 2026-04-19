@@ -8,6 +8,7 @@ Run from this folder:
 
 from __future__ import annotations
 
+import html
 import sys
 from pathlib import Path
 
@@ -50,25 +51,65 @@ from us_market_watch import (  # noqa: E402
 )
 
 
-def _render_major_indices_strip() -> None:
-    rev = reveal_balances()
-    rows = fetch_major_indices()
-    c1, c2, c3 = st.columns(3)
-    for col, r in zip((c1, c2, c3), rows):
-        with col:
-            nm = str(r.get("label", ""))
-            px = r.get("last")
-            chg = r.get("day_chg_pct")
-            if px is None:
-                st.metric(nm, "—")
-            else:
-                ccy = (r.get("ccy") or "").strip()
-                suf = f" {ccy}" if ccy and rev else ""
-                val = mask_plain(float(px), reveal=rev, decimals=2) + (suf if rev else "")
-                st.metric(nm, val, f"{float(chg):+.2f}%" if chg is not None else None)
-    st.caption(
-        f"Pulse · Yahoo · {index_strip_updated_at()} · vendor delay applies"
+@st.cache_data(ttl=30, show_spinner=False)
+def _cached_major_indices():
+    """Short TTL so Pulse refreshes without hammering Yahoo; fragment drives reruns."""
+    return fetch_major_indices()
+
+
+def _render_session_calendar_grid(ctx: dict) -> None:
+    """HTML grid avoids Streamlit metric ellipsis on ISO dates."""
+    today = html.escape(str(ctx["today_et"]))
+    joint = "Yes" if ctx["joint_session_today"] else "No"
+    prev = html.escape(str(ctx["previous_joint_session"] or "—"))
+    nxt = html.escape(str(ctx["next_joint_session"] or "—"))
+    st.markdown(
+        f"""
+<div class="vb-cal-grid">
+  <div class="vb-cal-cell"><div class="vb-cal-l">US / Eastern date</div><div class="vb-cal-v">{today}</div></div>
+  <div class="vb-cal-cell"><div class="vb-cal-l">NYSE + TSX open today</div><div class="vb-cal-v">{joint}</div></div>
+  <div class="vb-cal-cell"><div class="vb-cal-l">Previous joint session</div><div class="vb-cal-v">{prev}</div></div>
+  <div class="vb-cal-cell"><div class="vb-cal-l">Next joint session</div><div class="vb-cal-v">{nxt}</div></div>
+</div>
+        """,
+        unsafe_allow_html=True,
     )
+
+
+def _render_major_indices_strip() -> None:
+    # Index levels are public benchmarks — never hide behind the portfolio privacy mask.
+    rows = _cached_major_indices()
+    parts: list[str] = []
+    for r in rows:
+        nm = html.escape(str(r.get("label", "")))
+        px = r.get("last")
+        prev = r.get("prev_close")
+        chg = r.get("day_chg_pct")
+        ccy = html.escape((str(r.get("ccy") or "").strip() or "USD"))
+        if px is None:
+            parts.append(
+                f'<div class="vb-idx-cell"><div class="vb-idx-name">{nm}</div>'
+                f'<div class="vb-idx-row"><span class="vb-idx-last">—</span></div>'
+                f'<div class="vb-idx-prev">Prev close unavailable (data)</div></div>'
+            )
+            continue
+        chg_s = f"{float(chg):+.2f}%" if chg is not None else "—"
+        cg = float(chg) if chg is not None else 0.0
+        cls = "pos" if cg > 0 else ("neg" if cg < 0 else "flat")
+        prev_s = f"{float(prev):,.2f}" if prev is not None else "—"
+        last_s = f"{float(px):,.2f}"
+        parts.append(
+            f'<div class="vb-idx-cell"><div class="vb-idx-name">{nm}</div>'
+            f'<div class="vb-idx-row"><span class="vb-idx-last">{last_s} {ccy}</span>'
+            f'<span class="vb-idx-chg {cls}">{chg_s}</span></div>'
+            f'<div class="vb-idx-prev">Prev close {prev_s} {ccy} · vs prior session close</div></div>'
+        )
+    st.markdown('<div class="vb-idx-grid">' + "".join(parts) + "</div>", unsafe_allow_html=True)
+    st.caption(f"Pulse · Yahoo · {index_strip_updated_at()} · vendor delay applies")
+
+
+def _clear_index_strip_cache() -> None:
+    _cached_major_indices.clear()
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -245,17 +286,7 @@ def main() -> None:
     reveal = reveal_balances()
 
     ctx = session_context_for_today()
-    # 2×2 so each metric gets ~half width (avoids default 4-col ellipsis on dates)
-    m1a, m1b = st.columns(2)
-    with m1a:
-        st.metric("US / Eastern date", str(ctx["today_et"]))
-    with m1b:
-        st.metric("NYSE + TSX open today", "Yes" if ctx["joint_session_today"] else "No")
-    m2a, m2b = st.columns(2)
-    with m2a:
-        st.metric("Previous joint session", str(ctx["previous_joint_session"] or "—"))
-    with m2b:
-        st.metric("Next joint session", str(ctx["next_joint_session"] or "—"))
+    _render_session_calendar_grid(ctx)
 
     with st.sidebar:
         st.markdown("### Ingest")
@@ -434,6 +465,7 @@ def main() -> None:
 
         if st.button("Refresh prices", type="primary"):
             _cached_us_watch.clear()
+            _clear_index_strip_cache()
 
         with st.spinner("Loading…"):
             try:

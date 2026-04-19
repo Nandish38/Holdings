@@ -81,6 +81,67 @@ h1, h2, h3 { font-family: 'Syne', sans-serif !important; letter-spacing: 0.03em;
   overflow-x: auto !important;
   white-space: nowrap !important;
 }
+/* Let wide content breathe (Streamlit columns default to overflow hidden) */
+section.main [data-testid="stMainBlockContainer"] {
+  overflow-x: auto !important;
+}
+section.main [data-testid="column"] {
+  overflow: visible !important;
+}
+/* Custom header grids (replace st.metric for dates / indices — no ellipsis) */
+.vb-cal-grid, .vb-idx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+  margin: 0 0 10px 0;
+}
+.vb-cal-cell, .vb-idx-cell {
+  background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+.vb-cal-l, .vb-idx-name {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.72;
+  margin-bottom: 6px;
+  white-space: normal;
+  word-break: break-word;
+}
+.vb-cal-v {
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+}
+.vb-idx-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+.vb-idx-last {
+  font-size: 1.12rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.vb-idx-chg { font-size: 0.92rem; font-variant-numeric: tabular-nums; opacity: 0.9; }
+.vb-idx-chg.pos { color: #6ee7b7; }
+.vb-idx-chg.neg { color: #fca5a5; }
+.vb-idx-chg.flat { color: #c4b5fd; }
+.vb-idx-prev {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  white-space: normal;
+  word-break: break-word;
+}
 </style>
         """,
         unsafe_allow_html=True,

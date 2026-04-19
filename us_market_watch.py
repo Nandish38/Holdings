@@ -250,20 +250,38 @@ def build_us_watch_table(
 
 
 def _one_index(sym: str, label: str) -> dict[str, Any]:
-    """Intraday-style last vs prior daily close when 5m data exists."""
-    row: dict[str, Any] = {"symbol": sym, "label": label, "last": None, "day_chg_pct": None, "ccy": ""}
+    """Last print vs prior *session* daily close; 5m when Yahoo serves it, else daily close."""
+    row: dict[str, Any] = {
+        "symbol": sym,
+        "label": label,
+        "last": None,
+        "prev_close": None,
+        "day_chg_pct": None,
+        "ccy": "",
+    }
     try:
         t = yf.Ticker(sym)
-        d = t.history(period="8d", interval="1d", auto_adjust=True)
-        intra = t.history(period="2d", interval="5m", auto_adjust=True)
+        d = t.history(period="1mo", interval="1d", auto_adjust=True)
         if d is None or d.empty or "Close" not in d.columns:
             return row
-        prev_close = float(d["Close"].iloc[-2]) if len(d) >= 2 else float(d["Close"].iloc[-1])
+        closes = d["Close"].dropna()
+        if len(closes) < 1:
+            return row
+        prev_close = float(closes.iloc[-2]) if len(closes) >= 2 else float(closes.iloc[-1])
+        last_daily = float(closes.iloc[-1])
+        intra = t.history(period="5d", interval="5m", auto_adjust=True)
         if intra is not None and not intra.empty and "Close" in intra.columns:
-            last = float(intra["Close"].dropna().iloc[-1])
+            ic = intra["Close"].dropna()
+            last = float(ic.iloc[-1]) if len(ic) else last_daily
         else:
-            last = float(d["Close"].iloc[-1])
+            intra_1h = t.history(period="7d", interval="1h", auto_adjust=True)
+            if intra_1h is not None and not intra_1h.empty and "Close" in intra_1h.columns:
+                hc = intra_1h["Close"].dropna()
+                last = float(hc.iloc[-1]) if len(hc) else last_daily
+            else:
+                last = last_daily
         row["last"] = last
+        row["prev_close"] = prev_close
         row["day_chg_pct"] = (last / prev_close - 1.0) * 100.0 if prev_close else None
         fi = getattr(t, "fast_info", None)
         if fi and hasattr(fi, "get"):
