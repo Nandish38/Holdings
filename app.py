@@ -285,26 +285,82 @@ def main() -> None:
 
     with tab_goals:
         st.write("Goals are saved to `portfolio_goals.json` in this same folder.")
-        with st.form("goals_form"):
+
+        st.subheader("Target & monthly contribution")
+        st.caption(
+            "These three fields update the estimate **as soon as you change them** (no need to save first). "
+            "Use **Save goals** below to persist everything to disk."
+        )
+        g1, g2, g3 = st.columns(3)
+        with g1:
             tgt_pv = st.number_input(
-                "Target total portfolio value (CAD, optional)",
+                "Target total portfolio (CAD)",
                 min_value=0.0,
                 value=float(goals.target_portfolio_value_cad or 0.0),
                 step=1000.0,
+                help="Value you want your portfolio to reach (CAD, using the sidebar FX for USD lines).",
+            )
+        with g2:
+            _default_months = (
+                int(goals.months_to_goal)
+                if goals.months_to_goal and goals.months_to_goal > 0
+                else 120
             )
             months_goal = st.number_input(
-                "Months to reach that target (for contribution math)",
-                min_value=0,
-                value=int(goals.months_to_goal or 0),
+                "Months to reach target",
+                min_value=1,
+                max_value=600,
+                value=_default_months,
                 step=1,
+                help="Horizon for the contribution math. Previously defaulted to 0, which hid the estimate.",
             )
+        with g3:
+            _ret = goals.target_annual_return_pct
+            if _ret is None:
+                _ret = 5.0
             tgt_ret = st.number_input(
-                "Expected annual return % (used for contribution math; optional)",
+                "Expected annual return % (model)",
                 min_value=0.0,
                 max_value=50.0,
-                value=float(goals.target_annual_return_pct or 0.0),
+                value=float(_ret),
                 step=0.5,
+                help="Used only to size contributions (not a forecast). Use 0 for simple linear savings.",
             )
+
+        st.subheader("Monthly contribution (estimate)")
+        st.caption(
+            "End-of-month contributions; same annualized return on current balance and new deposits. "
+            "Not tax or fee advice."
+        )
+        if tgt_pv > 0 and months_goal >= 1:
+            gap = tgt_pv - total_cad
+            st.caption(
+                f"Current portfolio (CAD approx): **${total_cad:,.0f}** → gap to target: **${gap:,.0f}** over **{months_goal}** months."
+            )
+            pay, warn = monthly_contribution(
+                current_value=total_cad,
+                target_value=float(tgt_pv),
+                months=int(months_goal),
+                annual_return_pct=float(tgt_ret),
+            )
+            st.metric("Approx. monthly contribution (CAD)", f"${pay:,.2f}")
+            if warn:
+                st.warning(warn)
+        elif tgt_pv > 0:
+            st.info("Set **months to reach target** to at least 1 (above) to see the monthly amount.")
+        else:
+            st.info("Enter a **target total (CAD)** above to see the monthly contribution estimate.")
+
+        st.subheader("Progress vs portfolio target")
+        if tgt_pv > 0:
+            pct = min(100.0, max(0.0, total_cad / tgt_pv * 100.0))
+            st.progress(min(1.0, pct / 100.0))
+            st.caption(f"{pct:.1f}% of ${tgt_pv:,.0f} CAD (approx)")
+        else:
+            st.caption("Enter a target total above to see a progress bar.")
+
+        with st.form("goals_form"):
+            st.markdown("**Risk / flags settings** (saved with the button below)")
             max_pos = st.number_input("Max single position % per account", value=float(goals.max_single_position_pct or 25.0), step=1.0)
             max_eq = st.number_input("Max non-index equity % per account", value=float(goals.max_equity_non_index_pct or 15.0), step=1.0)
             notes = st.text_area("Notes", value=goals.notes, height=80)
@@ -322,32 +378,6 @@ def main() -> None:
             save_goals(goals, goals_path)
             st.session_state["goals_cache"] = goals
             st.success("Saved.")
-
-        st.subheader("Progress vs portfolio target")
-        if goals.target_portfolio_value_cad:
-            pct = min(100.0, max(0.0, total_cad / goals.target_portfolio_value_cad * 100.0))
-            st.progress(min(1.0, pct / 100.0))
-            st.caption(f"{pct:.1f}% of ${goals.target_portfolio_value_cad:,.0f} CAD (approx)")
-        else:
-            st.caption("Set a target total above to see a progress bar.")
-
-        st.subheader("Monthly contribution (estimate)")
-        st.caption(
-            "Assumes end-of-month contributions, the same **expected annual return** on both your "
-            "current balance and new deposits, and the **months to goal** horizon. Not tax or fee advice."
-        )
-        if goals.target_portfolio_value_cad and goals.months_to_goal:
-            pay, warn = monthly_contribution(
-                current_value=total_cad,
-                target_value=float(goals.target_portfolio_value_cad),
-                months=int(goals.months_to_goal),
-                annual_return_pct=goals.target_annual_return_pct,
-            )
-            st.metric("Approx. monthly contribution (CAD)", f"${pay:,.2f}")
-            if warn:
-                st.warning(warn)
-        else:
-            st.info("Set a **target portfolio value (CAD)** and **months to goal**, then save goals.")
 
         st.subheader("Per-account targets (CAD, optional)")
         at = dict(goals.account_targets_cad or {})

@@ -17,7 +17,10 @@ def monthly_contribution(
     if months <= 0:
         return 0.0, "Months to goal must be greater than zero."
     if target_value <= current_value:
-        return 0.0, None
+        return 0.0, (
+            "Current portfolio (CAD approx) is already at or above this target, "
+            "so the modeled monthly contribution is $0."
+        )
 
     pv = float(current_value)
     fv = float(target_value)
