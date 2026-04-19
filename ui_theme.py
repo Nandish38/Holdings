@@ -18,7 +18,14 @@ def inject_vault_css() -> None:
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&family=Syne:wght@500;700&display=swap');
 html, body, [class*="stApp"] { font-family: 'Sora', system-ui, sans-serif !important; color: #e8e6f2; }
-h1, h2, h3 { font-family: 'Syne', sans-serif !important; letter-spacing: 0.03em; font-weight: 600 !important; }
+h1, h2, h3 {
+  font-family: 'Syne', sans-serif !important;
+  letter-spacing: 0.03em;
+  font-weight: 600 !important;
+  line-height: 1.28 !important;
+  padding-top: 0.12em !important;
+  padding-bottom: 0.06em !important;
+}
 [data-testid="stAppViewContainer"] {
   background:
     radial-gradient(1200px 520px at 8% -8%, rgba(138, 92, 246, 0.28), transparent 58%),
@@ -27,7 +34,8 @@ h1, h2, h3 { font-family: 'Syne', sans-serif !important; letter-spacing: 0.03em;
 }
 [data-testid="stHeader"] { background: rgba(6, 5, 12, 0.65); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
 .block-container {
-  padding-top: 0.75rem !important;
+  /* Enough air so the first H2 isn’t clipped under the Streamlit chrome / Syne ascenders */
+  padding-top: 1.75rem !important;
   padding-left: 2rem !important;
   padding-right: 2rem !important;
   max-width: 1400px;
@@ -81,11 +89,18 @@ h1, h2, h3 { font-family: 'Syne', sans-serif !important; letter-spacing: 0.03em;
   overflow-x: auto !important;
   white-space: nowrap !important;
 }
-/* Let wide content breathe (Streamlit columns default to overflow hidden) */
+/*
+ * Never set overflow-x: auto on the main block root: per CSS, non-visible overflow-x
+ * forces overflow-y to compute to auto and clips the TOP of the first heading (Vaultboard).
+ */
 section.main [data-testid="stMainBlockContainer"] {
-  overflow-x: auto !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
 }
 section.main [data-testid="column"] {
+  overflow: visible !important;
+}
+section.main [data-testid="stMarkdownContainer"] {
   overflow: visible !important;
 }
 /* Custom header grids (replace st.metric for dates / indices — no ellipsis) */
