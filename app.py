@@ -356,11 +356,9 @@ def main() -> None:
             )
 
         st.subheader("Monthly deposit (model)")
-        if tgt_pv > 0 and months_goal >= 1:
+        if tgt_pv > 0:
             gap = tgt_pv - total_cad
-            st.caption(
-                f"Current portfolio (CAD approx): **${total_cad:,.0f}** → gap to target: **${gap:,.0f}** over **{months_goal}** months."
-            )
+            st.caption(f"Now **${total_cad:,.0f}** · gap **${gap:,.0f}** · **{months_goal}** mo")
             pay, warn = monthly_contribution(
                 current_value=total_cad,
                 target_value=float(tgt_pv),
@@ -370,10 +368,8 @@ def main() -> None:
             st.metric("Monthly (CAD)", f"${pay:,.0f}")
             if warn:
                 st.warning(warn)
-        elif tgt_pv > 0:
-            st.info("Set **months to reach target** to at least 1 (above) to see the monthly amount.")
         else:
-            st.info("Enter a **target total (CAD)** above to see the monthly contribution estimate.")
+            st.caption("Enter a target (CAD).")
 
         st.subheader("Progress")
         if tgt_pv > 0:
