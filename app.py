@@ -11,9 +11,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
+from plotly.colors import sample_colorscale
 from dotenv import load_dotenv
 
 _ROOT = Path(__file__).resolve().parent
@@ -92,23 +95,6 @@ def account_market_value_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
     return g
 
 
-def security_bucket(row: pd.Series) -> str:
-    stype = str(row.get("Security Type", "") or "").upper().replace(" ", "_")
-    if "EXCHANGE_TRADED" in stype or stype.endswith("_ETF") or stype == "ETF":
-        return "ETF"
-    if stype == "EQUITY":
-        return "Stock"
-    return "Other"
-
-
-def stocks_vs_etf_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
-    t = df.copy()
-    t["_mv_cad"] = t.apply(lambda r: _mv_cad_row(r, usd_cad), axis=1)
-    t["asset_class"] = t.apply(security_bucket, axis=1)
-    g = t.groupby("asset_class", dropna=False)["_mv_cad"].sum().reset_index(name="market_value_cad")
-    return g
-
-
 def symbol_weight_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
     t = df.copy()
     t["_mv_cad"] = t.apply(lambda r: _mv_cad_row(r, usd_cad), axis=1)
@@ -116,6 +102,92 @@ def symbol_weight_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
     total = float(g["market_value_cad"].sum()) or 1.0
     g["weight_pct"] = g["market_value_cad"] / total * 100.0
     return g.sort_values("market_value_cad", ascending=False)
+
+
+def _is_equity_type(st: object) -> bool:
+    return str(st).upper().strip() == "EQUITY"
+
+
+def _is_etf_type(st: object) -> bool:
+    u = str(st).upper().replace(" ", "_")
+    return "EXCHANGE_TRADED" in u or u.endswith("_ETF") or u == "ETF"
+
+
+def rollup_symbols_by_return(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
+    """One row per symbol: CAD MV, unrealized P&L % vs MV, label = full name + (ticker)."""
+    t = df.copy()
+    t["_mv_cad"] = t.apply(lambda r: _mv_cad_row(r, usd_cad), axis=1)
+    t["_ur"] = pd.to_numeric(t.get("Market Unrealized Returns"), errors="coerce").fillna(0.0)
+    g = t.groupby("Symbol", as_index=False, dropna=False).agg(
+        market_value_cad=("_mv_cad", "sum"),
+        unrealized=("_ur", "sum"),
+        Name=("Name", "first"),
+        Security_Type=("Security Type", "first"),
+    )
+    mv = g["market_value_cad"].astype(float)
+    ur = g["unrealized"].astype(float)
+    g["ret_pct"] = (ur / mv.replace(0, np.nan) * 100.0).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    nm = g["Name"].astype(str).str.strip()
+    g["pie_label"] = nm.where(nm.str.len() > 0, g["Symbol"].astype(str)) + " (" + g["Symbol"].astype(str) + ")"
+    return g
+
+
+def _u_from_returns(ret: pd.Series) -> np.ndarray:
+    """Map return % to [0,1] for RdYlGn: negatives→red side, positives→green; span respects min/max."""
+    a = ret.replace([np.inf, -np.inf], np.nan).fillna(0.0).astype(float).to_numpy()
+    if len(a) == 0:
+        return np.array([])
+    lo, hi = float(np.min(a)), float(np.max(a))
+    if not np.isfinite(lo) or not np.isfinite(hi):
+        return np.full(len(a), 0.5)
+    if hi <= lo:
+        return np.full(len(a), 0.5)
+    if lo >= 0:
+        return np.clip(0.5 + 0.5 * (a - lo) / (hi - lo + 1e-9), 0.0, 1.0)
+    if hi <= 0:
+        return np.clip(0.5 * (a - lo) / (0.0 - lo + 1e-9), 0.0, 1.0)
+    u = np.zeros_like(a, dtype=float)
+    neg = a <= 0.0
+    u[neg] = 0.5 * (a[neg] - lo) / (0.0 - lo + 1e-9)
+    u[~neg] = 0.5 + 0.5 * (a[~neg]) / (hi + 1e-9)
+    return np.clip(u, 0.0, 1.0)
+
+
+def pie_holdings_colored_by_return(sub: pd.DataFrame, title: str) -> go.Figure:
+    fig = go.Figure()
+    if sub is None or sub.empty:
+        fig.update_layout(title=dict(text=title), annotations=[dict(text="No rows", showarrow=False, x=0.5, y=0.5)])
+        return fig
+    sub = sub.loc[sub["market_value_cad"].astype(float) > 0].copy()
+    if sub.empty:
+        fig.update_layout(title=dict(text=title), annotations=[dict(text="No rows", showarrow=False, x=0.5, y=0.5)])
+        return fig
+    sub = sub.sort_values("market_value_cad", ascending=False)
+    r = sub["ret_pct"]
+    u = _u_from_returns(r)
+    colors = [sample_colorscale("RdYlGn", float(ui))[0] for ui in u]
+    fig.add_trace(
+        go.Pie(
+            labels=sub["pie_label"],
+            values=sub["market_value_cad"],
+            marker=dict(colors=colors, line=dict(color="#1a1a1a", width=0.6)),
+            hole=0.38,
+            textinfo="label+percent",
+            textposition="outside",
+            insidetextorientation="horizontal",
+            hovertemplate="<b>%{label}</b><br>MV (CAD): %{value:,.2f}<br>Unrealized vs MV: %{customdata:.2f}%<extra></extra>",
+            customdata=r.astype(float),
+            sort=False,
+        )
+    )
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=14)),
+        margin=dict(t=48, b=80, l=20, r=20),
+        showlegend=True,
+        legend=dict(font=dict(size=9), traceorder="normal"),
+        height=560,
+    )
+    return fig
 
 
 def render_flag(f: Flag) -> None:
@@ -217,16 +289,27 @@ def main() -> None:
         ur = df["Market Unrealized Returns"].sum(skipna=True)
         m3.metric("Unrealized Σ", f"{ur:,.0f}")
 
-        bucket = stocks_vs_etf_cad(df, usd_cad)
-        c1, c2 = st.columns(2)
-        with c1:
+        roll = rollup_symbols_by_return(df, usd_cad)
+        stx = roll[roll["Security_Type"].map(_is_equity_type)].copy()
+        etf = roll[roll["Security_Type"].map(_is_etf_type)].copy()
+        st.caption(
+            "Pies: slice size = CAD market value. Colour = unrealized return % vs MV **within that chart** "
+            "(RdYlGn: worst→red, best→green; negatives sit on the red side when losses exist)."
+        )
+        ra, rb = st.columns(2)
+        with ra:
             fig_a = px.pie(acct, names="label", values="market_value_cad", hole=0.4, title="Accounts")
             fig_a.update_layout(margin=dict(t=30, b=0, l=0, r=0), showlegend=True, legend_font_size=11)
             st.plotly_chart(fig_a, use_container_width=True)
-        with c2:
-            fig_b = px.pie(bucket, names="asset_class", values="market_value_cad", hole=0.4, title="Stock / ETF / other")
-            fig_b.update_layout(margin=dict(t=30, b=0, l=0, r=0), showlegend=True, legend_font_size=11)
-            st.plotly_chart(fig_b, use_container_width=True)
+        with rb:
+            st.plotly_chart(
+                pie_holdings_colored_by_return(stx, "Stocks — every name"),
+                use_container_width=True,
+            )
+        st.plotly_chart(
+            pie_holdings_colored_by_return(etf, "ETFs — every name"),
+            use_container_width=True,
+        )
         fig_s = px.bar(sym.head(12), x="Symbol", y="weight_pct", title="Weights %")
         fig_s.update_layout(xaxis_title=None, yaxis_title="%", margin=dict(t=40, b=0, l=0, r=0))
         st.plotly_chart(fig_s, use_container_width=True)
