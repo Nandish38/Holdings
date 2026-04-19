@@ -26,7 +26,12 @@ h1, h2, h3 { font-family: 'Syne', sans-serif !important; letter-spacing: 0.03em;
     linear-gradient(168deg, #05040a 0%, #0c0b14 38%, #06070f 100%) !important;
 }
 [data-testid="stHeader"] { background: rgba(6, 5, 12, 0.65); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
-.block-container { padding-top: 0.75rem !important; max-width: 1320px; }
+.block-container {
+  padding-top: 0.75rem !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+  max-width: 1400px;
+}
 .stTabs [data-baseweb="tab-list"] { gap: 6px; border-bottom: 1px solid rgba(255,255,255,0.07); padding-bottom: 4px; }
 .stTabs [data-baseweb="tab"] {
   border-radius: 999px !important;
@@ -38,16 +43,43 @@ h1, h2, h3 { font-family: 'Syne', sans-serif !important; letter-spacing: 0.03em;
   background: linear-gradient(120deg, rgba(167,139,250,0.35), rgba(34,211,238,0.15)) !important;
   border-color: rgba(167,139,250,0.45) !important;
 }
-div[data-testid="stMetric"] {
+/* Metrics: prevent Streamlit’s default ellipsis / clipping in tight columns */
+[data-testid="stMetric"] {
   background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 14px;
-  padding: 10px 12px;
+  padding: 12px 14px;
+  overflow: visible !important;
+  min-width: 0;
 }
-div[data-testid="stMetricValue"] { font-variant-numeric: tabular-nums; }
+[data-testid="stMetric"] * {
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+[data-testid="stMetric"] label,
+[data-testid="stMetric"] [data-testid="stMetricLabel"] {
+  white-space: normal !important;
+  word-wrap: break-word !important;
+}
+[data-testid="stMetric"] [data-testid="stMetricValue"] {
+  font-variant-numeric: tabular-nums;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  font-size: clamp(0.82rem, 1.6vw, 1.05rem) !important;
+  line-height: 1.35 !important;
+}
 [data-testid="stSidebar"] {
   background: linear-gradient(180deg, rgba(12,10,22,0.98), rgba(8,8,14,0.98)) !important;
   border-right: 1px solid rgba(255,255,255,0.06);
+  min-width: 280px !important;
+}
+/* Long paths: scroll instead of mid-word ellipsis */
+[data-testid="stSidebar"] input[type="text"] {
+  text-overflow: clip !important;
+  overflow-x: auto !important;
+  white-space: nowrap !important;
 }
 </style>
         """,

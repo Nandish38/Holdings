@@ -236,20 +236,26 @@ def main() -> None:
         st.session_state[REVEAL_KEY] = False
     inject_vault_css()
 
-    top_l, _, top_r = st.columns([5, 2, 2])
-    with top_l:
-        st.markdown("## ◈ Vaultboard")
+    st.markdown("## ◈ Vaultboard")
+    h1, h2 = st.columns([4, 1])
+    with h1:
         st.caption("composition · risk · pulse — not advice")
-    with top_r:
+    with h2:
         st.toggle("Show balances", key=REVEAL_KEY, help="Off = dollar amounts hidden in Chamber & Pulse")
     reveal = reveal_balances()
 
     ctx = session_context_for_today()
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("US/Eastern", ctx["today_et"])
-    c2.metric("NYSE+TSX today", "Yes" if ctx["joint_session_today"] else "No")
-    c3.metric("Prev session", ctx["previous_joint_session"] or "—")
-    c4.metric("Next session", ctx["next_joint_session"] or "—")
+    # 2×2 so each metric gets ~half width (avoids default 4-col ellipsis on dates)
+    m1a, m1b = st.columns(2)
+    with m1a:
+        st.metric("US / Eastern date", str(ctx["today_et"]))
+    with m1b:
+        st.metric("NYSE + TSX open today", "Yes" if ctx["joint_session_today"] else "No")
+    m2a, m2b = st.columns(2)
+    with m2a:
+        st.metric("Previous joint session", str(ctx["previous_joint_session"] or "—"))
+    with m2b:
+        st.metric("Next joint session", str(ctx["next_joint_session"] or "—"))
 
     with st.sidebar:
         st.markdown("### Ingest")
