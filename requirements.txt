@@ -4,3 +4,4 @@ plotly>=5.18
 pandas_market_calendars>=4.4
 python-dotenv>=1.0
 openai>=1.0
+yfinance>=0.2.40

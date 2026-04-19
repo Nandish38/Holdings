@@ -28,6 +28,18 @@ from goals_store import PortfolioGoals, load_goals, save_goals  # noqa: E402
 from history_store import load_snapshots, snapshots_to_dataframe, upsert_snapshot  # noqa: E402
 from market_calendar import now_et, session_context_for_today, trading_schedule_day  # noqa: E402
 from portfolio_loader import approx_total_market_value_cad, load_holdings_csv, parse_as_of_date  # noqa: E402
+from us_market_watch import DEFAULT_US_WATCHLIST, build_us_watch_table  # noqa: E402
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _cached_us_watch(sort_by: str, top_n: int, custom: str) -> pd.DataFrame:
+    extra = [s.strip().upper() for s in custom.replace(",", " ").split() if s.strip()]
+    tickers: tuple[str, ...] | None
+    if extra:
+        tickers = tuple(dict.fromkeys(list(DEFAULT_US_WATCHLIST) + extra))
+    else:
+        tickers = None
+    return build_us_watch_table(sort_by=sort_by, top_n=int(top_n), tickers=tickers)
 
 
 def _mv_cad_row(row: pd.Series, usd_cad: float) -> float:
@@ -80,43 +92,34 @@ def symbol_weight_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
 
 
 def render_flag(f: Flag) -> None:
-    icon = {"info": "ℹ️", "warn": "⚠️", "alert": "🚨"}.get(f.severity, "•")
-    st.markdown(f"**{icon} {f.title}**  \n{f.detail}")
-    if f.symbols:
-        st.caption(", ".join(f.symbols))
+    icon = {"info": "•", "warn": "!", "alert": "!!"}.get(f.severity, "•")
+    st.markdown(f"**{icon} {f.title}** — {f.detail}")
 
 
 def main() -> None:
-    st.set_page_config(page_title="Holdings dashboard", layout="wide")
+    st.set_page_config(page_title="Holdings", layout="wide", initial_sidebar_state="expanded")
     default_csv = _ROOT / "data" / "holdings-report-2026-04-18.csv"
 
-    st.title("Holdings dashboard")
-    st.caption("Tracks NYSE + TSX trading days, surfaces risk flags, and stores goals next to this app.")
+    st.title("Holdings")
 
     ctx = session_context_for_today()
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.metric("Date (US/Eastern)", ctx["today_et"])
-    with col_b:
-        st.metric(
-            "Both NYSE & TSX open today",
-            "Yes" if ctx["joint_session_today"] else "No",
-        )
-    with col_c:
-        st.caption(
-            f"Previous joint session: {ctx['previous_joint_session'] or '—'}  \n"
-            f"Next joint session: {ctx['next_joint_session'] or '—'}"
-        )
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("US/Eastern", ctx["today_et"])
+    c2.metric("NYSE+TSX today", "Yes" if ctx["joint_session_today"] else "No")
+    c3.metric("Prev session", ctx["previous_joint_session"] or "—")
+    c4.metric("Next session", ctx["next_joint_session"] or "—")
 
     with st.sidebar:
-        st.header("Data")
-        uploaded = st.file_uploader("Upload holdings CSV", type=["csv"])
+        st.markdown("### File")
+        uploaded = st.file_uploader("CSV", type=["csv"], label_visibility="collapsed")
         path_str = st.text_input(
-            "Or path to CSV on disk",
+            "Path",
             value=str(default_csv) if default_csv.exists() else "",
+            placeholder="path/to/holdings.csv",
+            label_visibility="collapsed",
         )
-        st.header("FX (for CAD totals)")
-        usd_cad = st.number_input("USD → CAD", min_value=0.5, max_value=2.5, value=1.38, step=0.01)
+        st.markdown("### FX")
+        usd_cad = st.slider("USD→CAD", 0.5, 2.5, 1.38, 0.01)
 
     path = Path(path_str) if path_str.strip() else default_csv
     if uploaded is not None:
@@ -134,11 +137,10 @@ def main() -> None:
         st.exception(e)
         st.stop()
 
-    if as_of:
-        st.success(as_of)
     as_of_ts = parse_as_of_date(as_of)
-    if as_of_ts is not None:
-        st.caption(f"Parsed as-of date: {as_of_ts.date()}")
+    if as_of:
+        with st.expander("File as-of", expanded=False):
+            st.write(as_of)
 
     total_cad = approx_total_market_value_cad(df, usd_cad)
     goals_path = _ROOT / "portfolio_goals.json"
@@ -164,8 +166,8 @@ def main() -> None:
         )
 
     with st.sidebar:
-        st.header("Portfolio history")
-        if st.button("Record snapshot for today (Eastern)", help="Stores today’s totals using the USD→CAD rate above."):
+        st.markdown("### Snapshot")
+        if st.button("Save today (ET)"):
             upsert_snapshot(
                 now_et().date(),
                 total_cad,
@@ -175,10 +177,10 @@ def main() -> None:
                 by_symbol_cad=by_symbol_cad,
                 path=snapshots_path,
             )
-            st.success("Snapshot saved.")
+            st.sidebar.success("OK")
 
-    tab_over, tab_hist, tab_mkt, tab_ai, tab_goals = st.tabs(
-        ["Overview", "History", "Market days", "AI & flags", "Goals"]
+    tab_over, tab_us, tab_hist, tab_mkt, tab_ai, tab_goals = st.tabs(
+        ["Portfolio", "US list", "History", "Calendar", "Flags", "Goals"]
     )
 
     with tab_over:
@@ -186,26 +188,23 @@ def main() -> None:
         m1.metric("Positions", str(len(df)))
         m2.metric("Approx total MV (CAD)", f"${total_cad:,.0f}")
         ur = df["Market Unrealized Returns"].sum(skipna=True)
-        m3.metric("Sum unrealized (mixed ccy)", f"{ur:,.2f}")
+        m3.metric("Unrealized Σ", f"{ur:,.0f}")
 
         bucket = stocks_vs_etf_cad(df, usd_cad)
         c1, c2 = st.columns(2)
         with c1:
-            fig_a = px.pie(acct, names="label", values="market_value_cad", hole=0.35, title="By account (CAD approx)")
+            fig_a = px.pie(acct, names="label", values="market_value_cad", hole=0.4, title="Accounts")
+            fig_a.update_layout(margin=dict(t=30, b=0, l=0, r=0), showlegend=True, legend_font_size=11)
             st.plotly_chart(fig_a, use_container_width=True)
         with c2:
-            fig_b = px.pie(
-                bucket,
-                names="asset_class",
-                values="market_value_cad",
-                hole=0.35,
-                title="Stock vs ETF vs other (CAD approx)",
-            )
+            fig_b = px.pie(bucket, names="asset_class", values="market_value_cad", hole=0.4, title="Stock / ETF / other")
+            fig_b.update_layout(margin=dict(t=30, b=0, l=0, r=0), showlegend=True, legend_font_size=11)
             st.plotly_chart(fig_b, use_container_width=True)
-        fig_s = px.bar(sym.head(12), x="Symbol", y="weight_pct", title="Weight % by symbol (CAD approx)")
+        fig_s = px.bar(sym.head(12), x="Symbol", y="weight_pct", title="Weights %")
+        fig_s.update_layout(xaxis_title=None, yaxis_title="%", margin=dict(t=40, b=0, l=0, r=0))
         st.plotly_chart(fig_s, use_container_width=True)
 
-        st.subheader("Holdings")
+        st.markdown("**Lines**")
         show = df[
             [
                 c
@@ -222,15 +221,53 @@ def main() -> None:
                 if c in df.columns
             ]
         ]
-        st.dataframe(show, use_container_width=True, hide_index=True)
+        st.dataframe(show, use_container_width=True, hide_index=True, height=320)
+
+    with tab_us:
+        st.markdown("**US large-cap watch** — ranked by recent % change in a fixed liquid basket (not a full market scan).")
+        with st.expander("About “expected” returns", expanded=False):
+            st.markdown(
+                "**Implied upside %** uses Yahoo’s mean **analyst price target** vs last close when available. "
+                "That is not a forecast, guarantee, or personal advice. Past **1M / 3M %** are historical only."
+            )
+        c1, c2, c3 = st.columns([1, 1, 2])
+        with c1:
+            sort_by = st.selectbox("Sort", ["1M %", "3M %"], index=0)
+        with c2:
+            top_n = st.slider("Rows", 10, 40, 22)
+        with c3:
+            custom = st.text_input("Extra tickers (spaces/commas)", placeholder="e.g. GME, MSTR")
+
+        if st.button("Refresh prices", type="primary"):
+            _cached_us_watch.clear()
+
+        with st.spinner("Loading…"):
+            try:
+                watch = _cached_us_watch(sort_by, top_n, custom or "")
+            except Exception as e:
+                watch = pd.DataFrame()
+                st.error(str(e))
+        if watch is None or watch.empty:
+            st.info("No rows (network or rate limit). Try Refresh again.")
+        else:
+            st.dataframe(watch, use_container_width=True, hide_index=True)
+            bar_x = sort_by if sort_by in watch.columns else "1M %"
+            color_col = "1M %" if "1M %" in watch.columns else bar_x
+            fig_m = px.bar(
+                watch.head(15).iloc[::-1],
+                x=bar_x,
+                y="Symbol",
+                orientation="h",
+                title=f"Top 15 ({bar_x})",
+                color=color_col if color_col in watch.columns else bar_x,
+                color_continuous_scale="Tealgrn",
+            )
+            fig_m.update_layout(yaxis=dict(categoryorder="total ascending"), margin=dict(l=0, r=0, t=40, b=0))
+            st.plotly_chart(fig_m, use_container_width=True)
 
     with tab_hist:
-        st.subheader("Portfolio value over time")
-        st.caption(
-            "Values come from **saved snapshots** in `portfolio_snapshots.json`. Loading a CSV with an "
-            "“As of …” footer stores that date automatically. Use **Record snapshot for today** in the "
-            "sidebar when you do not have a dated export."
-        )
+        with st.expander("How history is built"):
+            st.write("Snapshots in `portfolio_snapshots.json`. CSV “As of” dates save automatically; sidebar **Save today** adds today.")
 
         rows = load_snapshots(snapshots_path)
         hist = snapshots_to_dataframe(rows)
@@ -245,9 +282,10 @@ def main() -> None:
                 x="date",
                 y="total_market_value_cad",
                 markers=True,
-                title="Total market value (CAD, snapshot basis)",
+                title="Total MV (CAD)",
                 hover_data=["source", "usd_cad"],
             )
+            fig_l.update_layout(margin=dict(t=40, b=0, l=0, r=0))
             st.plotly_chart(fig_l, use_container_width=True)
             show_h = hx.assign(date=lambda d: d["date"].dt.date.astype(str))[
                 ["date", "total_market_value_cad", "usd_cad", "source", "recorded_at"]
@@ -255,19 +293,16 @@ def main() -> None:
             st.dataframe(show_h, use_container_width=True, hide_index=True)
 
     with tab_mkt:
-        st.write(
-            "Use joint **NYSE + TSX** sessions as a simple “real market day” gate when your "
-            "portfolio spans both Canada-listed and US-listed names."
-        )
-        pick = st.date_input("Inspect a calendar date", value=pd.Timestamp.now().date())
+        pick = st.date_input("Date", value=pd.Timestamp.now().date())
         sched = trading_schedule_day(pick)
-        st.json(sched)
+        ny = sched["nyse"]["is_session"]
+        tsx = sched["tsx"]["is_session"]
+        st.markdown(f"**NYSE** {'session' if ny else 'closed'} · **TSX** {'session' if tsx else 'closed'}")
+        with st.expander("Schedule JSON"):
+            st.json(sched)
 
     with tab_ai:
-        st.write(
-            "**Rules-based flags** always run (concentration, single-stock sleeve, deep drawdowns). "
-            "If `OPENAI_API_KEY` is set in `.env`, optional model commentary is merged in."
-        )
+        st.caption("Rules + optional OpenAI if `OPENAI_API_KEY` is set.")
         hf = heuristic_flags(df, goals)
         of, oerr = openai_flags(df, goals)
         merged: list[Flag] = list(hf)
@@ -284,21 +319,16 @@ def main() -> None:
                 st.divider()
 
     with tab_goals:
-        st.write("Goals are saved to `portfolio_goals.json` in this same folder.")
+        st.caption("Persisted in `portfolio_goals.json`.")
 
-        st.subheader("Target & monthly contribution")
-        st.caption(
-            "These three fields update the estimate **as soon as you change them** (no need to save first). "
-            "Use **Save goals** below to persist everything to disk."
-        )
+        st.subheader("Target & contribution")
         g1, g2, g3 = st.columns(3)
         with g1:
             tgt_pv = st.number_input(
-                "Target total portfolio (CAD)",
+                "Target (CAD)",
                 min_value=0.0,
                 value=float(goals.target_portfolio_value_cad or 0.0),
                 step=1000.0,
-                help="Value you want your portfolio to reach (CAD, using the sidebar FX for USD lines).",
             )
         with g2:
             _default_months = (
@@ -307,31 +337,25 @@ def main() -> None:
                 else 120
             )
             months_goal = st.number_input(
-                "Months to reach target",
+                "Months",
                 min_value=1,
                 max_value=600,
                 value=_default_months,
                 step=1,
-                help="Horizon for the contribution math. Previously defaulted to 0, which hid the estimate.",
             )
         with g3:
             _ret = goals.target_annual_return_pct
             if _ret is None:
                 _ret = 5.0
             tgt_ret = st.number_input(
-                "Expected annual return % (model)",
+                "Model return %/yr",
                 min_value=0.0,
                 max_value=50.0,
                 value=float(_ret),
                 step=0.5,
-                help="Used only to size contributions (not a forecast). Use 0 for simple linear savings.",
             )
 
-        st.subheader("Monthly contribution (estimate)")
-        st.caption(
-            "End-of-month contributions; same annualized return on current balance and new deposits. "
-            "Not tax or fee advice."
-        )
+        st.subheader("Monthly deposit (model)")
         if tgt_pv > 0 and months_goal >= 1:
             gap = tgt_pv - total_cad
             st.caption(
@@ -343,7 +367,7 @@ def main() -> None:
                 months=int(months_goal),
                 annual_return_pct=float(tgt_ret),
             )
-            st.metric("Approx. monthly contribution (CAD)", f"${pay:,.2f}")
+            st.metric("Monthly (CAD)", f"${pay:,.0f}")
             if warn:
                 st.warning(warn)
         elif tgt_pv > 0:
@@ -351,19 +375,18 @@ def main() -> None:
         else:
             st.info("Enter a **target total (CAD)** above to see the monthly contribution estimate.")
 
-        st.subheader("Progress vs portfolio target")
+        st.subheader("Progress")
         if tgt_pv > 0:
             pct = min(100.0, max(0.0, total_cad / tgt_pv * 100.0))
             st.progress(min(1.0, pct / 100.0))
-            st.caption(f"{pct:.1f}% of ${tgt_pv:,.0f} CAD (approx)")
+            st.caption(f"{pct:.1f}% of ${tgt_pv:,.0f}")
         else:
-            st.caption("Enter a target total above to see a progress bar.")
+            st.caption("Set a target.")
 
         with st.form("goals_form"):
-            st.markdown("**Risk / flags settings** (saved with the button below)")
-            max_pos = st.number_input("Max single position % per account", value=float(goals.max_single_position_pct or 25.0), step=1.0)
-            max_eq = st.number_input("Max non-index equity % per account", value=float(goals.max_equity_non_index_pct or 15.0), step=1.0)
-            notes = st.text_area("Notes", value=goals.notes, height=80)
+            max_pos = st.number_input("Max position %", value=float(goals.max_single_position_pct or 25.0), step=1.0)
+            max_eq = st.number_input("Max non-index equity %", value=float(goals.max_equity_non_index_pct or 15.0), step=1.0)
+            notes = st.text_area("Notes", value=goals.notes, height=72)
             submitted = st.form_submit_button("Save goals")
 
         if submitted:
@@ -379,19 +402,19 @@ def main() -> None:
             st.session_state["goals_cache"] = goals
             st.success("Saved.")
 
-        st.subheader("Per-account targets (CAD, optional)")
+        st.subheader("Per-account targets")
         at = dict(goals.account_targets_cad or {})
         new_at: dict[str, float] = {}
         for _, row in acct.iterrows():
             label = str(row["label"])
             cur = float(row["market_value_cad"])
             prev = float(at.get(label, 0.0) or 0.0)
-            tgt = st.number_input(f"Target for {label}", min_value=0.0, value=prev, step=500.0, key=f"acct_tgt_{label}")
+            tgt = st.number_input(label, min_value=0.0, value=prev, step=500.0, key=f"acct_tgt_{label}")
             if tgt > 0:
                 new_at[label] = tgt
-                st.caption(f"Current (approx CAD): ${cur:,.0f} → {min(100.0, cur / tgt * 100.0):.1f}% of target")
+                st.caption(f"${cur:,.0f} → {min(100.0, cur / tgt * 100.0):.0f}%")
 
-        if st.button("Save per-account targets"):
+        if st.button("Save account targets"):
             goals.account_targets_cad = new_at
             save_goals(goals, goals_path)
             st.session_state["goals_cache"] = goals

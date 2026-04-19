@@ -1,6 +1,6 @@
 # Holdings dashboard
 
-Streamlit app for Canadian broker CSV exports: allocation, NYSE+TSX trading days, goal sizing, snapshot history, and optional OpenAI flags.
+Streamlit app for Canadian broker CSV exports: allocation, NYSE+TSX calendar, goal sizing, snapshot history, a **US movers** watchlist (Yahoo prices + analyst targets), and optional OpenAI flags.
 
 ## Run locally
 
