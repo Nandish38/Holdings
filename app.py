@@ -28,17 +28,44 @@ from goals_store import PortfolioGoals, load_goals, save_goals  # noqa: E402
 from history_store import load_snapshots, snapshots_to_dataframe, upsert_snapshot  # noqa: E402
 from market_calendar import now_et, session_context_for_today, trading_schedule_day  # noqa: E402
 from portfolio_loader import approx_total_market_value_cad, load_holdings_csv, parse_as_of_date  # noqa: E402
-from us_market_watch import DEFAULT_US_WATCHLIST, build_us_watch_table  # noqa: E402
+from us_market_watch import (  # noqa: E402
+    DEFAULT_FULL_WATCHLIST,
+    build_us_watch_table,
+    fetch_major_indices,
+    index_strip_updated_at,
+)
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+def _render_major_indices_strip() -> None:
+    rows = fetch_major_indices()
+    c1, c2, c3 = st.columns(3)
+    for col, r in zip((c1, c2, c3), rows):
+        with col:
+            nm = str(r.get("label", ""))
+            px = r.get("last")
+            chg = r.get("day_chg_pct")
+            if px is None:
+                st.metric(nm, "—")
+            else:
+                ccy = (r.get("ccy") or "").strip()
+                suf = f" {ccy}" if ccy else ""
+                st.metric(
+                    nm,
+                    f"{float(px):,.2f}{suf}",
+                    f"{float(chg):+.2f}%" if chg is not None else None,
+                )
+    st.caption(
+        f"Yahoo · vs prior daily close · {index_strip_updated_at()} · not real-time; exchange rules & vendor delay apply."
+    )
+
+
+@st.cache_data(ttl=600, show_spinner=False)
 def _cached_us_watch(sort_by: str, top_n: int, custom: str) -> pd.DataFrame:
     extra = [s.strip().upper() for s in custom.replace(",", " ").split() if s.strip()]
-    tickers: tuple[str, ...] | None
     if extra:
-        tickers = tuple(dict.fromkeys(list(DEFAULT_US_WATCHLIST) + extra))
+        tickers: tuple[str, ...] = tuple(dict.fromkeys(list(DEFAULT_FULL_WATCHLIST) + extra))
     else:
-        tickers = None
+        tickers = DEFAULT_FULL_WATCHLIST
     return build_us_watch_table(sort_by=sort_by, top_n=int(top_n), tickers=tickers)
 
 
@@ -180,7 +207,7 @@ def main() -> None:
             st.sidebar.success("OK")
 
     tab_over, tab_us, tab_hist, tab_mkt, tab_ai, tab_goals = st.tabs(
-        ["Portfolio", "US list", "History", "Calendar", "Flags", "Goals"]
+        ["Portfolio", "Watchlist", "History", "Calendar", "Flags", "Goals"]
     )
 
     with tab_over:
@@ -224,11 +251,27 @@ def main() -> None:
         st.dataframe(show, use_container_width=True, hide_index=True, height=320)
 
     with tab_us:
-        st.markdown("**US large-cap watch** — ranked by recent % change in a fixed liquid basket (not a full market scan).")
-        with st.expander("About “expected” returns", expanded=False):
+        st.markdown("**S&P 500 · Nasdaq · Nifty 50**")
+        try:
+            import inspect
+
+            _frag = getattr(st, "fragment", None)
+            if _frag is not None and "run_every" in inspect.signature(_frag).parameters:
+                _frag(run_every=45)(_render_major_indices_strip)()
+            else:
+                _render_major_indices_strip()
+        except Exception:
+            _render_major_indices_strip()
+
+        st.divider()
+        st.markdown(
+            "**US + TSX basket** — ranked by recent % change. Not every TSX listing; curated liquid names, ETFs, and common CDRs."
+        )
+        with st.expander("Data notes", expanded=False):
             st.markdown(
-                "**Implied upside %** uses Yahoo’s mean **analyst price target** vs last close when available. "
-                "That is not a forecast, guarantee, or personal advice. Past **1M / 3M %** are historical only."
+                "**P/E** and **dividend yield** come from Yahoo `info` when present (often delayed). "
+                "**Implied upside** = analyst mean target vs last price, not a forecast. "
+                "Index strip uses 5m bars when Yahoo serves them; still subject to vendor delay vs a live terminal."
             )
         c1, c2, c3 = st.columns([1, 1, 2])
         with c1:
