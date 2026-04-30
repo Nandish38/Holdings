@@ -24,6 +24,7 @@ from ui_theme import (  # noqa: E402
     REVEAL_KEY,
     holdings_table_for_display,
     inject_lekha_css,
+    inject_yahoo_css,
     inject_vault_css,
     mask_cad,
     mask_plain,
@@ -53,6 +54,8 @@ from us_market_watch import (  # noqa: E402
     fetch_major_indices,
     index_strip_updated_at,
 )
+
+import yfinance as yf  # noqa: E402
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -282,7 +285,7 @@ def _is_public_view() -> bool:
 
 
 def _nav_choice() -> str:
-    items = ["Home", "Portfolio", "Returns", "Markets", "Activity", "Journal", "Signal", "Goals"]
+    items = ["Home", "Quote", "Portfolio", "Returns", "Markets", "Activity", "Journal", "Signal", "Goals"]
     default = "Portfolio" if not _is_public_view() else "Home"
     # segmented_control exists in newer Streamlit; fall back to radio for older.
     seg = getattr(st, "segmented_control", None)
@@ -322,6 +325,54 @@ def _kpi_grid(items: list[tuple[str, str, str | None]]) -> None:
     st.markdown('<div class="lk-kpi-grid">' + "".join(parts) + "</div>", unsafe_allow_html=True)
 
 
+@st.cache_data(ttl=90, show_spinner=False)
+def _cached_quote(symbol: str) -> dict:
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return {"symbol": "", "ok": False, "error": "Enter a symbol."}
+    try:
+        t = yf.Ticker(sym)
+        h = t.history(period="6mo", interval="1d", auto_adjust=True)
+        if h is None or h.empty or "Close" not in h.columns:
+            return {"symbol": sym, "ok": False, "error": "No price history (symbol or network)."}
+        close = h["Close"].dropna()
+        last = float(close.iloc[-1])
+        prev = float(close.iloc[-2]) if len(close) >= 2 else last
+        chg = last - prev
+        chg_pct = (last / prev - 1.0) * 100.0 if prev else 0.0
+        fi = getattr(t, "fast_info", None)
+        ccy = ""
+        if fi and hasattr(fi, "get"):
+            ccy = str(fi.get("currency", "") or "")
+        info = {}
+        try:
+            info = t.info or {}
+        except Exception:
+            info = {}
+        name = str(info.get("shortName") or info.get("longName") or sym)[:80]
+        return {
+            "symbol": sym,
+            "ok": True,
+            "name": name,
+            "ccy": ccy,
+            "history": h.reset_index().rename(columns={"Date": "date", "Datetime": "date"}),
+            "last": last,
+            "prev": prev,
+            "chg": chg,
+            "chg_pct": chg_pct,
+            "day_low": info.get("dayLow"),
+            "day_high": info.get("dayHigh"),
+            "fifty_two_week_low": info.get("fiftyTwoWeekLow"),
+            "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
+            "volume": info.get("volume") or info.get("averageVolume"),
+            "market_cap": info.get("marketCap"),
+            "pe": info.get("trailingPE") or info.get("forwardPE"),
+            "div_yield": info.get("dividendYield"),
+        }
+    except Exception as e:
+        return {"symbol": sym, "ok": False, "error": str(e)}
+
+
 def main() -> None:
     public = _is_public_view()
     st.set_page_config(
@@ -334,9 +385,25 @@ def main() -> None:
 
     if REVEAL_KEY not in st.session_state:
         st.session_state[REVEAL_KEY] = False if public else True
-    inject_lekha_css()
+    if "ui_style" not in st.session_state:
+        st.session_state["ui_style"] = "Lekha (dark)"
     if not public:
-        inject_vault_css()
+        with st.sidebar:
+            st.markdown("### Style")
+            st.session_state["ui_style"] = st.selectbox(
+                "UI style",
+                ["Lekha (dark)", "Yahoo Finance (light)"],
+                index=0 if st.session_state["ui_style"] == "Lekha (dark)" else 1,
+                label_visibility="collapsed",
+            )
+
+    ui_style = str(st.session_state.get("ui_style") or "Lekha (dark)")
+    if ui_style.startswith("Yahoo"):
+        inject_yahoo_css()
+    else:
+        inject_lekha_css()
+        if not public:
+            inject_vault_css()
 
     if public:
         _hero(
@@ -474,6 +541,72 @@ def main() -> None:
             "- **Journal**: thesis and exit notes.\n\n"
             "Not investment advice."
         )
+
+    elif view == "Quote":
+        st.subheader("Quote")
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            sym = st.text_input("Symbol", value="AAPL", placeholder="e.g. AAPL, MSFT, TD.TO", label_visibility="collapsed")
+        with c2:
+            if st.button("Refresh", type="primary"):
+                _cached_quote.clear()
+
+        q = _cached_quote(sym)
+        if not q.get("ok"):
+            st.error(str(q.get("error") or "Unable to load quote."))
+        else:
+            last = float(q["last"])
+            chg = float(q["chg"])
+            chg_pct = float(q["chg_pct"])
+            ccy = str(q.get("ccy") or "")
+            cls = "lk-chg-pos" if chg > 0 else ("lk-chg-neg" if chg < 0 else "lk-chg-flat")
+            header = (
+                f"<div class='lk-card'>"
+                f"<div class='lk-muted'>{html.escape(q.get('name') or '')} · {html.escape(q.get('symbol') or '')}</div>"
+                f"<div style='display:flex; gap:14px; align-items:baseline; flex-wrap:wrap;'>"
+                f"<div style='font-size:2.1rem; font-weight:700;' class='lk-mono'>{last:,.2f} {html.escape(ccy)}</div>"
+                f"<div class='{cls}' style='font-size:1.05rem; font-weight:650;'>{chg:+.2f} ({chg_pct:+.2f}%)</div>"
+                f"</div>"
+                f"</div>"
+            )
+            st.markdown(header, unsafe_allow_html=True)
+
+            h = q["history"]
+            if isinstance(h, pd.DataFrame) and not h.empty:
+                # Normalize date column
+                dcol = "date" if "date" in h.columns else ("Date" if "Date" in h.columns else h.columns[0])
+                ccol = "Close" if "Close" in h.columns else "close"
+                fig = px.line(h, x=dcol, y=ccol, title=None)
+                fig.update_layout(margin=dict(t=10, b=10, l=0, r=0), height=340)
+                fig.update_traces(line=dict(color="#2563eb", width=2))
+                st.plotly_chart(fig, use_container_width=True)
+
+            # Stats row
+            def _fmt_num(v: object, *, pct: bool = False) -> str:
+                if v is None or (isinstance(v, float) and v != v):
+                    return "—"
+                try:
+                    x = float(v)
+                except Exception:
+                    return "—"
+                if pct:
+                    return f"{x*100.0:.2f}%"
+                if abs(x) >= 1e9:
+                    return f"{x/1e9:.2f}B"
+                if abs(x) >= 1e6:
+                    return f"{x/1e6:.2f}M"
+                return f"{x:,.0f}" if abs(x) >= 1000 else f"{x:,.2f}"
+
+            _kpi_grid(
+                [
+                    ("Day range", f"{_fmt_num(q.get('day_low'))} – {_fmt_num(q.get('day_high'))}", None),
+                    ("52w range", f"{_fmt_num(q.get('fifty_two_week_low'))} – {_fmt_num(q.get('fifty_two_week_high'))}", None),
+                    ("Volume", _fmt_num(q.get("volume")), None),
+                    ("Market cap", _fmt_num(q.get("market_cap")), None),
+                    ("P/E", _fmt_num(q.get("pe")), None),
+                    ("Div yield", _fmt_num(q.get("div_yield"), pct=True), None),
+                ]
+            )
 
     elif view == "Portfolio":
         st.subheader("Portfolio")

@@ -37,8 +37,8 @@ def _download_text(url: str, *, timeout_s: int = 20) -> str:
 
 
 def _read_html_table(html_text: str) -> pd.DataFrame:
-    # Requires lxml (added to requirements).
-    tables = pd.read_html(html_text)
+    # Use pure-Python parser stack (html5lib + bs4) to avoid a hard lxml dependency.
+    tables = pd.read_html(html_text, flavor="html5lib")
     if not tables:
         return pd.DataFrame()
     # Heuristic: biggest table is usually constituents.
