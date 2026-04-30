@@ -50,3 +50,7 @@ If you use OpenAI flags, store `OPENAI_API_KEY` in either:
 
 Then reference it in the task definition (see `TASKDEF.template.json`).
 
+### Auth0 (OIDC) in front of Streamlit
+
+Put **oauth2-proxy** in front of this container instead of exposing Streamlit directly. See **`deploy/oauth2-proxy/README.md`** for Auth0 settings, callback URLs, and a second container in the same ECS task.
+

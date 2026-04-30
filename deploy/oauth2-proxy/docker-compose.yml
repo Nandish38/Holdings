@@ -1,0 +1,35 @@
+# Auth0 (OIDC) in front of Vaultboard. Browse http://localhost:4180
+#
+# cp .env.example .env  &&  docker compose up --build
+
+services:
+  streamlit:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    expose:
+      - "8501"
+    environment:
+      # Pass through any app secrets your Vaultboard needs (optional)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    ports:
+      - "4180:4180"
+    environment:
+      OAUTH2_PROXY_PROVIDER: oidc
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${AUTH0_ISSUER}
+      OAUTH2_PROXY_CLIENT_ID: ${AUTH0_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET}
+      OAUTH2_PROXY_REDIRECT_URL: ${OAUTH2_PROXY_REDIRECT_URL}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+      OAUTH2_PROXY_UPSTREAMS: http://streamlit:8501
+      # Forward auth headers if your app ever needs them (optional)
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
+      OAUTH2_PROXY_PASS_ACCESS_TOKEN: "false"
+      # Email scope helps populate user header
+      OAUTH2_PROXY_SCOPE: openid profile email
+    depends_on:
+      - streamlit

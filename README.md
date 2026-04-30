@@ -46,3 +46,7 @@ Place a holdings CSV path in the sidebar or upload a file. A small sample lives 
 ## Deploy on AWS ECS (Fargate)
 
 This repo includes a `Dockerfile` and an ECS guide at `ecs/README.md`.
+
+### Auth0 in front of the app (Option 1)
+
+Use **oauth2-proxy** so Auth0 handles login before traffic reaches Streamlit. See **`deploy/oauth2-proxy/README.md`** and **`deploy/oauth2-proxy/docker-compose.yml`** for a local stack and ECS-oriented notes.
