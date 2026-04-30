@@ -1,0 +1,32 @@
+{
+  "family": "holdings",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/holdingsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "holdings",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/holdings:<TAG>",
+      "essential": true,
+      "portMappings": [{ "containerPort": 8501, "protocol": "tcp" }],
+      "environment": [
+        { "name": "OPENAI_MODEL", "value": "gpt-4o-mini" }
+      ],
+      "secrets": [
+        { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/holdings/OPENAI_API_KEY" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/holdings",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
+

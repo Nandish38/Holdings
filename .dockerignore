@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+env/
+venv/
+ENV/
+
+.git/
+.github/
+.devcontainer/
+
+.streamlit/
+
+# Local artifacts / runtime state
+_uploaded_holdings.csv
+portfolio_goals.json
+portfolio_snapshots.json
+activity_log.json
+journal_entries.json
+
+# If you want the sample CSV inside the container, remove this ignore line
+data/
+
