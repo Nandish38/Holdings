@@ -340,9 +340,9 @@ def main() -> None:
 
     if public:
         _hero(
-            "Open your books.",
-            "Document every position. Record every thesis. Build an honest track record.",
-            kicker="Personal investment journal",
+            "Holdings Journal",
+            "Track positions, log activity, and write thesis notes — all in one place.",
+            kicker="Personal portfolio journal",
         )
         st.caption("Indicative prices · Not real-time · Not investment advice")
     else:

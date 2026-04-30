@@ -37,3 +37,7 @@ Copy `.env.example` to `.env` if you use OpenAI commentary.
 ## Data
 
 Place a holdings CSV path in the sidebar or upload a file. A small sample lives in `data/holdings-report-2026-04-18.csv`.
+
+## Deploy on AWS ECS (Fargate)
+
+This repo includes a `Dockerfile` and an ECS guide at `ecs/README.md`.
