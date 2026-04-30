@@ -163,6 +163,100 @@ section.main [data-testid="stMarkdownContainer"] {
     )
 
 
+def inject_lekha_css() -> None:
+    """
+    A cleaner "public journal" skin inspired by Lekha:
+    - simple hero, pill nav, crisp cards
+    - readable typography, subtle borders, minimal chrome
+    """
+    st.markdown(
+        r"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fraunces:opsz,wght@9..144,600;700&display=swap');
+
+html, body, [class*="stApp"] { font-family: 'Inter', system-ui, sans-serif !important; color: #eef2ff; }
+h1, h2, h3 {
+  font-family: 'Fraunces', ui-serif, Georgia, serif !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em;
+  line-height: 1.18 !important;
+}
+
+[data-testid="stAppViewContainer"] {
+  background:
+    radial-gradient(1100px 520px at 12% -10%, rgba(196, 181, 253, 0.24), transparent 60%),
+    radial-gradient(900px 460px at 92% 0%, rgba(45, 212, 191, 0.14), transparent 55%),
+    linear-gradient(170deg, #05050b 0%, #0a0a14 38%, #050610 100%) !important;
+}
+[data-testid="stHeader"] { background: rgba(6, 6, 12, 0.55); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.06); }
+.block-container { padding-top: 1.4rem !important; padding-left: 2rem !important; padding-right: 2rem !important; max-width: 1220px; }
+
+/* Hide Streamlit footer/menu affordances */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+
+.lk-hero {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(140deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border-radius: 18px;
+  padding: 20px 20px;
+  margin: 4px 0 14px 0;
+}
+.lk-hero-kicker {
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.74;
+}
+.lk-hero-title { font-size: 2.15rem; margin: 6px 0 4px 0; }
+.lk-hero-sub { opacity: 0.82; font-size: 1.02rem; line-height: 1.5; margin: 6px 0 0 0; }
+
+.lk-card {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(160deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02));
+  border-radius: 16px;
+  padding: 14px 14px;
+}
+.lk-card + .lk-card { margin-top: 12px; }
+.lk-muted { opacity: 0.76; }
+.lk-mono { font-variant-numeric: tabular-nums; }
+
+.lk-pillrow { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px 0; }
+.lk-pill {
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 0.92rem;
+  opacity: 0.92;
+}
+.lk-pill strong { font-weight: 600; }
+
+.lk-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.lk-kpi {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+.lk-kpi-l { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.72; margin-bottom: 6px; }
+.lk-kpi-v { font-size: 1.12rem; font-weight: 600; }
+.lk-kpi-s { font-size: 0.84rem; opacity: 0.74; margin-top: 6px; }
+
+.lk-chg-pos { color: #6ee7b7; }
+.lk-chg-neg { color: #fca5a5; }
+.lk-chg-flat { color: #c4b5fd; }
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def mask_cad(n: float | None, *, reveal: bool, decimals: int = 0) -> str:
     if not reveal:
         return "·······"
