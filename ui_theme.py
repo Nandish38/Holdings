@@ -257,6 +257,51 @@ footer { visibility: hidden; }
     )
 
 
+def inject_yahoo_css() -> None:
+    """A light, market-terminal look (Yahoo Finance-ish)."""
+    st.markdown(
+        r"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+html, body, [class*="stApp"] { font-family: 'Inter', system-ui, sans-serif !important; color: #0f172a; }
+h1, h2, h3 { font-family: 'Inter', system-ui, sans-serif !important; font-weight: 650 !important; letter-spacing: -0.01em; }
+
+[data-testid="stAppViewContainer"] { background: #f5f7fb !important; }
+[data-testid="stHeader"] { background: rgba(255,255,255,0.85); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(15,23,42,0.08); }
+.block-container { padding-top: 1.2rem !important; padding-left: 1.6rem !important; padding-right: 1.6rem !important; max-width: 1240px; }
+
+[data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid rgba(15,23,42,0.08); }
+
+/* Cards */
+.lk-hero, .lk-card, .lk-kpi, .vb-cal-cell, .vb-idx-cell {
+  background: #ffffff !important;
+  border: 1px solid rgba(15,23,42,0.10) !important;
+  box-shadow: 0 1px 0 rgba(15,23,42,0.03);
+}
+.lk-hero-title { font-size: 2.0rem; }
+.lk-hero-kicker { color: #2563eb; opacity: 1.0; }
+.lk-muted { color: rgba(15,23,42,0.70); opacity: 1.0; }
+.lk-pill { background: #ffffff; border: 1px solid rgba(15,23,42,0.14); }
+
+/* Market colors */
+.lk-chg-pos, .vb-idx-chg.pos { color: #16a34a !important; }
+.lk-chg-neg, .vb-idx-chg.neg { color: #dc2626 !important; }
+.lk-chg-flat, .vb-idx-chg.flat { color: #2563eb !important; }
+
+/* Make Streamlit metrics look like compact stat tiles */
+[data-testid="stMetric"] {
+  background: #ffffff;
+  border: 1px solid rgba(15,23,42,0.10);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def mask_cad(n: float | None, *, reveal: bool, decimals: int = 0) -> str:
     if not reveal:
         return "·······"
