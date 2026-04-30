@@ -15,6 +15,10 @@ streamlit run app.py
 Copy `.env.example` to `.env` if you use OpenAI commentary.
 If you connect a broker via Plaid, also set `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `PLAID_ENV`.
 
+### Optional sign-in
+
+Set both `VAULTBOARD_USERNAME` and `VAULTBOARD_PASSWORD` (or `[auth]` in `.streamlit/secrets.toml`) to show an **Authorization** page before the app. Public share links with `?public=1` still work without signing in.
+
 ## Deploy on Streamlit Community Cloud
 
 1. Push this repository to GitHub (for example `https://github.com/Nandish38/Holdings`).

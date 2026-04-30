@@ -55,6 +55,13 @@ from us_market_watch import (  # noqa: E402
     fetch_major_indices,
     index_strip_updated_at,
 )
+from auth import (  # noqa: E402
+    auth_configured,
+    is_signed_in,
+    render_authorization_page,
+    should_gate,
+    sign_out,
+)
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -284,7 +291,7 @@ def _is_public_view() -> bool:
 
 
 def _nav_choice() -> str:
-    items = ["Home", "Connect", "Portfolio", "Returns", "Markets", "Activity", "Journal", "Signal", "Goals"]
+    items = ["Home", "Connect", "Portfolio", "Returns", "Markets", "Activity", "Journal", "Signal", "Goals", "Account"]
     default = "Portfolio" if not _is_public_view() else "Home"
     # segmented_control exists in newer Streamlit; fall back to radio for older.
     seg = getattr(st, "segmented_control", None)
@@ -293,7 +300,7 @@ def _nav_choice() -> str:
     return st.radio("Navigate", items, index=items.index(default), horizontal=True, label_visibility="collapsed")
 
 
-def _hero(title: str, subtitle: str, *, kicker: str = "Holdings journal") -> None:
+def _hero(title: str, subtitle: str, *, kicker: str = "Your portfolio, in the open") -> None:
     st.markdown(
         f"""
 <div class="lk-hero">
@@ -325,13 +332,13 @@ def _kpi_grid(items: list[tuple[str, str, str | None]]) -> None:
 
 
 def main() -> None:
-    public = _is_public_view()
     st.set_page_config(
-        page_title="Holdings Journal",
+        page_title="Vaultboard",
         layout="wide",
-        initial_sidebar_state="collapsed" if public else "expanded",
-        page_icon="📓" if public else "◈",
+        initial_sidebar_state="expanded",
+        page_icon="◈",
     )
+    public = _is_public_view()
     default_csv = _ROOT / "data" / "holdings-report-2026-04-18.csv"
 
     if REVEAL_KEY not in st.session_state:
@@ -340,18 +347,22 @@ def main() -> None:
     if not public:
         inject_vault_css()
 
+    if should_gate(public_view=public):
+        render_authorization_page()
+        st.stop()
+
     if public:
         _hero(
-            "Holdings Journal",
-            "Track positions, log activity, and write thesis notes — all in one place.",
-            kicker="Personal portfolio journal",
+            "Vaultboard",
+            "One place for allocation, market context, and the story behind your positions.",
+            kicker="Portfolio intelligence",
         )
-        st.caption("Indicative prices · Not real-time · Not investment advice")
+        st.caption("Indicative data · Not real-time · For your records, not investment advice")
     else:
-        st.markdown("## Holdings journal")
+        st.markdown("## Vaultboard")
         h1, h2 = st.columns([4, 1])
         with h1:
-            st.caption("portfolio · markets · activity · journal — not advice")
+            st.caption("Allocation · markets · activity · notes — a clear view of your book")
         with h2:
             st.toggle("Show balances", key=REVEAL_KEY, help="Off = dollar amounts hidden across the app")
     reveal = (False if public else reveal_balances())
@@ -365,6 +376,12 @@ def main() -> None:
     usd_cad = 1.38
     if not public:
         with st.sidebar:
+            if auth_configured() and is_signed_in():
+                st.markdown("### Account")
+                if st.button("Sign out", use_container_width=True):
+                    sign_out()
+                    st.rerun()
+                st.caption("You are signed in.")
             st.markdown("### Ingest")
             uploaded = st.file_uploader("CSV", type=["csv"], label_visibility="collapsed")
             path_str = st.text_input(
@@ -887,6 +904,23 @@ def main() -> None:
             save_goals(goals, goals_path)
             st.session_state["goals_cache"] = goals
             st.success("Account targets saved.")
+
+    elif view == "Account":
+        st.subheader("Account & authorization")
+        if public:
+            st.info("Public view does not use sign-in. Add `?public=1` to share a read-only style page.")
+        elif not auth_configured():
+            st.success("No password gate is configured. Anyone with the app URL can use it.")
+            st.markdown(
+                "To require sign-in, set **`VAULTBOARD_USERNAME`** and **`VAULTBOARD_PASSWORD`** "
+                "in the environment, or add an `[auth]` block to **`.streamlit/secrets.toml`** "
+                "(see `.env.example`)."
+            )
+        else:
+            st.markdown("You are **signed in**. Session lasts until you sign out or close the browser.")
+            if st.button("Sign out", type="primary"):
+                sign_out()
+                st.rerun()
 
     if public:
         st.caption("Not investment advice. Prices are indicative and may be delayed.")
