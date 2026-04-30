@@ -1,5 +1,10 @@
 .venv/
 __pycache__/
+.env
+.env.*
+
+# Broker connections (contains access tokens)
+broker_connections.json
 *.pyc
 .env
 .streamlit/secrets.toml

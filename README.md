@@ -13,6 +13,7 @@ streamlit run app.py
 ```
 
 Copy `.env.example` to `.env` if you use OpenAI commentary.
+If you connect a broker via Plaid, also set `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `PLAID_ENV`.
 
 ## Deploy on Streamlit Community Cloud
 

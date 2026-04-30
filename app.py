@@ -47,6 +47,8 @@ from portfolio_loader import approx_total_market_value_cad, load_holdings_csv, p
 from activity_store import ActivityItem, append_activity, load_activity, today_iso as today_iso_activity  # noqa: E402
 from journal_store import JournalEntry, append_entry, load_journal, today_iso as today_iso_journal  # noqa: E402
 from market_universe import get_universes  # noqa: E402
+from broker_store import BrokerConnection, get_connection, mark_sync, upsert_connection  # noqa: E402
+from plaid_integration import create_link_token, exchange_public_token, investments_holdings, transactions_sync  # noqa: E402
 from us_market_watch import (  # noqa: E402
     DEFAULT_FULL_WATCHLIST,
     build_us_watch_table,
@@ -282,7 +284,7 @@ def _is_public_view() -> bool:
 
 
 def _nav_choice() -> str:
-    items = ["Home", "Portfolio", "Returns", "Markets", "Activity", "Journal", "Signal", "Goals"]
+    items = ["Home", "Connect", "Portfolio", "Returns", "Markets", "Activity", "Journal", "Signal", "Goals"]
     default = "Portfolio" if not _is_public_view() else "Home"
     # segmented_control exists in newer Streamlit; fall back to radio for older.
     seg = getattr(st, "segmented_control", None)
@@ -474,6 +476,90 @@ def main() -> None:
             "- **Journal**: thesis and exit notes.\n\n"
             "Not investment advice."
         )
+
+    elif view == "Connect":
+        st.subheader("Connect broker")
+        st.caption("Connect via Plaid to sync holdings + transactions. Tokens are stored locally in `broker_connections.json`.")
+        if public:
+            st.info("Connect is disabled in public view.")
+            st.stop()
+
+        user_id = st.text_input("User id", value="default", help="Used to key the connection locally.")
+        conn = get_connection("plaid", user_id) if user_id.strip() else None
+
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            if st.button("Create Link token"):
+                try:
+                    tok = create_link_token(user_id=user_id.strip())
+                    st.session_state["plaid_link_token"] = tok
+                    st.success("Link token created.")
+                except Exception as e:
+                    st.error(str(e))
+        with c2:
+            if conn and conn.access_token and st.button("Sync now", type="primary"):
+                try:
+                    tx_df, next_cursor = transactions_sync(conn.access_token, conn.transactions_cursor)
+                    conn.transactions_cursor = next_cursor
+                    mark_sync(conn, holdings=False)
+                    upsert_connection(conn)
+
+                    # Import transactions into Activity log (best-effort)
+                    if tx_df is not None and not tx_df.empty:
+                        for _, r in tx_df.head(250).iterrows():
+                            # Map to activity note
+                            when = str(r.get("date") or "")[:10] or today_iso_activity()
+                            name = str(r.get("name") or r.get("merchant_name") or "Transaction")
+                            amt = r.get("amount")
+                            txt = f"{name} · {amt}" if amt is not None else name
+                            append_activity(ActivityItem(when=when, kind="note", text=txt))
+
+                    # Holdings snapshot
+                    h = investments_holdings(conn.access_token)
+                    if h is not None and not h.empty and "institution_value" in h.columns:
+                        # Treat as USD if currency not specified; user can still use FX slider elsewhere.
+                        total = float(pd.to_numeric(h["institution_value"], errors="coerce").fillna(0.0).sum())
+                        upsert_snapshot(
+                            now_et().date(),
+                            total_market_value_cad=total,  # stored as "total"; in Connect view we don't FX-convert
+                            usd_cad=1.0,
+                            source="plaid_sync",
+                            path=snapshots_path,
+                        )
+                        mark_sync(conn, holdings=True)
+                        upsert_connection(conn)
+                    st.success("Synced.")
+                except Exception as e:
+                    st.error(str(e))
+
+        st.divider()
+        st.markdown("### Paste public_token (dev shortcut)")
+        st.caption("If you already ran Plaid Link elsewhere, paste the public_token here to exchange it.")
+        public_token = st.text_input("public_token", value="", type="password")
+        if st.button("Exchange token") and public_token.strip():
+            try:
+                ex = exchange_public_token(public_token.strip())
+                conn = conn or BrokerConnection(provider="plaid", user_id=user_id.strip())
+                conn.access_token = ex["access_token"]
+                conn.item_id = ex["item_id"]
+                upsert_connection(conn)
+                st.success("Connected.")
+            except Exception as e:
+                st.error(str(e))
+
+        if conn and conn.access_token:
+            st.markdown("### Connection status")
+            st.json(
+                {
+                    "provider": conn.provider,
+                    "user_id": conn.user_id,
+                    "item_id": conn.item_id,
+                    "last_sync_at": conn.last_sync_at,
+                    "holdings_last_sync_at": conn.holdings_last_sync_at,
+                }
+            )
+        else:
+            st.info("Not connected yet. Set Plaid env vars and complete Link, or exchange a public_token.")
 
     elif view == "Portfolio":
         st.subheader("Portfolio")
