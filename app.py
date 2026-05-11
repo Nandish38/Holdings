@@ -49,6 +49,8 @@ from journal_store import JournalEntry, append_entry, load_journal, today_iso as
 from market_universe import get_universes  # noqa: E402
 from broker_store import BrokerConnection, get_connection, mark_sync, upsert_connection  # noqa: E402
 from plaid_integration import create_link_token, exchange_public_token, investments_holdings, transactions_sync  # noqa: E402
+from portfolio_alerts import core_alerts  # noqa: E402
+from returns_analysis import contribution_adjusted_history, returns_summary  # noqa: E402
 from us_market_watch import (  # noqa: E402
     DEFAULT_FULL_WATCHLIST,
     build_us_watch_table,
@@ -416,10 +418,8 @@ def main() -> None:
                 st.write(as_of)
 
     total_cad = approx_total_market_value_cad(df, usd_cad)
-    goals_path = _ROOT / "portfolio_goals.json"
-    snapshots_path = _ROOT / "portfolio_snapshots.json"
     if "goals_cache" not in st.session_state:
-        st.session_state["goals_cache"] = load_goals(goals_path)
+        st.session_state["goals_cache"] = load_goals()
     goals: PortfolioGoals = st.session_state["goals_cache"]
 
     acct = account_market_value_cad(df, usd_cad)
@@ -435,7 +435,6 @@ def main() -> None:
             "broker_as_of",
             by_account_cad=by_account_cad,
             by_symbol_cad=by_symbol_cad,
-            path=snapshots_path,
         )
 
     if not public:
@@ -449,7 +448,6 @@ def main() -> None:
                     "manual_today",
                     by_account_cad=by_account_cad,
                     by_symbol_cad=by_symbol_cad,
-                    path=snapshots_path,
                 )
                 st.sidebar.success("OK")
 
@@ -541,7 +539,6 @@ def main() -> None:
                             total_market_value_cad=total,  # stored as "total"; in Connect view we don't FX-convert
                             usd_cad=1.0,
                             source="plaid_sync",
-                            path=snapshots_path,
                         )
                         mark_sync(conn, holdings=True)
                         upsert_connection(conn)
@@ -628,40 +625,76 @@ def main() -> None:
 
     elif view == "Returns":
         st.subheader("Returns")
-        rows = load_snapshots(snapshots_path)
+        rows = load_snapshots()
         hist = snapshots_to_dataframe(rows)
         if hist.empty or "total_market_value_cad" not in hist.columns:
             st.info("No history yet. Load a holdings CSV with an “As of …” footer, or stamp a day.")
         else:
-            hx = hist.copy()
+            hx = contribution_adjusted_history(hist, load_activity())
             hx["date"] = pd.to_datetime(hx["date"], errors="coerce")
             hx = hx.dropna(subset=["date"]).sort_values("date")
-            if reveal:
-                ycol = "total_market_value_cad"
-                ttl = "Total MV (CAD)"
+
+            summary = returns_summary(hx)
+            _kpi_grid(
+                [
+                    ("Raw change", mask_signed_cad(summary["raw_change_cad"], reveal=reveal), "Total MV change"),
+                    (
+                        "Net contributions",
+                        mask_signed_cad(summary["net_contributions_cad"], reveal=reveal),
+                        "Deposits minus withdrawals",
+                    ),
+                    (
+                        "Adjusted gain",
+                        mask_signed_cad(summary["contribution_adjusted_gain_cad"], reveal=reveal),
+                        "Change after external flows",
+                    ),
+                ]
+            )
+
+            chart_mode = st.radio(
+                "Return lens",
+                ["Contribution-adjusted", "Raw total value"],
+                horizontal=True,
+                label_visibility="collapsed",
+            )
+            if chart_mode == "Raw total value":
+                ycol = "raw_index"
+                ttl = "Raw indexed path (first day = 100)"
             else:
-                base = float(hx["total_market_value_cad"].iloc[0]) or 1.0
-                hx["_idx"] = hx["total_market_value_cad"].astype(float) / base * 100.0
-                ycol = "_idx"
-                ttl = "Indexed path (first day = 100)"
+                ycol = "contribution_adjusted_index"
+                ttl = "Contribution-adjusted indexed path (first day = 100)"
             fig_l = px.line(
                 hx,
                 x="date",
                 y=ycol,
                 markers=True,
                 title=ttl,
-                hover_data=["source", "usd_cad"] if reveal else ["source"],
+                hover_data=["source", "usd_cad", "net_flow_cad"] if reveal else ["source"],
             )
             fig_l.update_layout(margin=dict(t=40, b=0, l=0, r=0))
-            if not reveal:
-                fig_l.update_traces(hovertemplate="<b>%{x}</b><br>Index: %{y:.2f}<extra></extra>")
+            fig_l.update_traces(hovertemplate="<b>%{x}</b><br>Index: %{y:.2f}<extra></extra>")
             st.plotly_chart(fig_l, use_container_width=True)
 
             show_h = hx.assign(date=lambda d: d["date"].dt.date.astype(str))[
-                ["date", "total_market_value_cad", "usd_cad", "source", "recorded_at"]
+                [
+                    "date",
+                    "total_market_value_cad",
+                    "net_flow_cad",
+                    "cumulative_net_contributions",
+                    "contribution_adjusted_gain_cad",
+                    "usd_cad",
+                    "source",
+                    "recorded_at",
+                ]
             ]
             if not reveal:
-                show_h["total_market_value_cad"] = "·······"
+                for c in [
+                    "total_market_value_cad",
+                    "net_flow_cad",
+                    "cumulative_net_contributions",
+                    "contribution_adjusted_gain_cad",
+                ]:
+                    show_h[c] = "·······"
             st.dataframe(show_h, use_container_width=True, hide_index=True)
 
     elif view == "Markets":
@@ -807,10 +840,11 @@ def main() -> None:
 
     elif view == "Signal":
         st.subheader("Signal")
-        st.caption("Rules + optional OpenAI if `OPENAI_API_KEY` is set.")
+        st.caption("Deterministic rules + optional OpenAI if `OPENAI_API_KEY` is set.")
         hf = heuristic_flags(df, goals)
+        cf = core_alerts(df, goals, as_of_date=as_of_ts, account_values_cad=by_account_cad, usd_cad=usd_cad)
         of, oerr = openai_flags(df, goals)
-        merged: list[Flag] = list(hf)
+        merged: list[Flag] = list(cf) + list(hf)
         if of:
             merged.extend(of)
         if oerr:
@@ -824,7 +858,7 @@ def main() -> None:
 
     elif view == "Goals":
         st.subheader("Goals")
-        st.caption("Persisted in `portfolio_goals.json`.")
+        st.caption("Persisted in local SQLite (`vaultboard.db`).")
 
         if public:
             st.info("Goals editing is disabled in public view.")
@@ -884,7 +918,7 @@ def main() -> None:
             goals.notes = notes
             if goals.account_targets_cad is None:
                 goals.account_targets_cad = {}
-            save_goals(goals, goals_path)
+            save_goals(goals)
             st.session_state["goals_cache"] = goals
             st.success("Saved.")
 
@@ -901,7 +935,7 @@ def main() -> None:
                 st.caption(f"{mask_cad(cur, reveal=reveal)} → {min(100.0, cur / tgt * 100.0):.0f}%")
         if st.button("Save account targets"):
             goals.account_targets_cad = new_at
-            save_goals(goals, goals_path)
+            save_goals(goals)
             st.session_state["goals_cache"] = goals
             st.success("Account targets saved.")
 

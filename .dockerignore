@@ -20,6 +20,11 @@ portfolio_goals.json
 portfolio_snapshots.json
 activity_log.json
 journal_entries.json
+broker_connections.json
+vaultboard.db
+vaultboard.db-*
+*.sqlite
+*.sqlite3
 
 # If you want the sample CSV inside the container, remove this ignore line
 data/

@@ -1,4 +1,4 @@
-"""Persist portfolio goals to a small JSON file next to the app."""
+"""Persist portfolio goals to SQLite, with legacy JSON path support."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+
+from db_store import connect, is_json_path, load_json_file, table_is_empty, utc_now_iso
 
 
 DEFAULT_GOALS_PATH = Path(__file__).resolve().parent / "portfolio_goals.json"
@@ -64,6 +66,38 @@ def _int(v: Any) -> int | None:
 
 
 def load_goals(path: Path | None = None) -> PortfolioGoals:
+    if is_json_path(path):
+        return _load_goals_json(Path(path))
+
+    with connect(path) as conn:
+        if path is None:
+            _migrate_json_goals_if_needed(conn)
+        row = conn.execute("SELECT payload FROM goals WHERE id = 1").fetchone()
+        if row is None:
+            return PortfolioGoals()
+        return PortfolioGoals.from_dict(json.loads(str(row["payload"])))
+
+
+def save_goals(goals: PortfolioGoals, path: Path | None = None) -> None:
+    if is_json_path(path):
+        _save_goals_json(goals, Path(path))
+        return
+
+    with connect(path) as conn:
+        conn.execute(
+            """
+            INSERT INTO goals (id, payload, updated_at)
+            VALUES (1, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                payload = excluded.payload,
+                updated_at = excluded.updated_at
+            """,
+            (json.dumps(goals.to_dict(), indent=2), utc_now_iso()),
+        )
+        conn.commit()
+
+
+def _load_goals_json(path: Path | None = None) -> PortfolioGoals:
     p = path or DEFAULT_GOALS_PATH
     if not p.exists():
         return PortfolioGoals()
@@ -71,7 +105,21 @@ def load_goals(path: Path | None = None) -> PortfolioGoals:
         return PortfolioGoals.from_dict(json.load(f))
 
 
-def save_goals(goals: PortfolioGoals, path: Path | None = None) -> None:
+def _save_goals_json(goals: PortfolioGoals, path: Path | None = None) -> None:
     p = path or DEFAULT_GOALS_PATH
     with p.open("w", encoding="utf-8") as f:
         json.dump(goals.to_dict(), f, indent=2)
+
+
+def _migrate_json_goals_if_needed(conn) -> None:
+    if not table_is_empty(conn, "goals"):
+        return
+    data = load_json_file(DEFAULT_GOALS_PATH)
+    if not isinstance(data, dict):
+        return
+    goals = PortfolioGoals.from_dict(data)
+    conn.execute(
+        "INSERT OR REPLACE INTO goals (id, payload, updated_at) VALUES (1, ?, ?)",
+        (json.dumps(goals.to_dict(), indent=2), utc_now_iso()),
+    )
+    conn.commit()

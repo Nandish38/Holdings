@@ -13,3 +13,9 @@ broker_connections.json
 _uploaded_holdings.csv
 portfolio_goals.json
 portfolio_snapshots.json
+activity_log.json
+journal_entries.json
+vaultboard.db
+vaultboard.db-*
+*.sqlite
+*.sqlite3

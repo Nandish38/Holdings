@@ -1,6 +1,6 @@
 # Holdings dashboard
 
-Streamlit app for Canadian broker CSV exports: allocation, NYSE+TSX calendar, goal sizing, snapshot history, a **US movers** watchlist (Yahoo prices + analyst targets), and optional OpenAI flags.
+Streamlit app for Canadian broker CSV exports: allocation, NYSE+TSX calendar, goal sizing, contribution-adjusted snapshot history, a **US movers** watchlist (Yahoo prices + analyst targets), and optional OpenAI flags.
 
 ## Run locally
 
@@ -14,6 +14,16 @@ streamlit run app.py
 
 Copy `.env.example` to `.env` if you use OpenAI commentary.
 If you connect a broker via Plaid, also set `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `PLAID_ENV`.
+
+### Local persistence
+
+Vaultboard stores goals, snapshots, activity, journal entries, and broker sync metadata in a local SQLite database named `vaultboard.db`. Set `VAULTBOARD_DB_PATH` to use another location.
+
+If older JSON files such as `portfolio_goals.json`, `portfolio_snapshots.json`, `activity_log.json`, `journal_entries.json`, or `broker_connections.json` exist, the app migrates them into SQLite the first time the matching table is empty. The JSON files are left in place as a backup.
+
+### Upgrade note
+
+This upgrade adds SQLite-backed app state, contribution-adjusted returns, deterministic portfolio alerts, and focused pytest coverage. Existing JSON state files are migrated automatically on first use.
 
 ### Optional sign-in
 
@@ -37,7 +47,7 @@ Set both `VAULTBOARD_USERNAME` and `VAULTBOARD_PASSWORD` (or `[auth]` in `.strea
 
 7. Deploy. Cloud will install `requirements.txt` and run `streamlit run app.py`.
 
-**Note:** `portfolio_goals.json` and `portfolio_snapshots.json` are created at runtime on Cloud; they reset when the app sleeps unless you add external storage later.
+**Note:** `vaultboard.db` is created at runtime on Cloud; it can reset when the app sleeps unless you add external storage later.
 
 ## Data
 
