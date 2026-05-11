@@ -25,6 +25,8 @@ If older JSON files such as `portfolio_goals.json`, `portfolio_snapshots.json`, 
 
 This upgrade adds SQLite-backed app state, contribution-adjusted returns, deterministic portfolio alerts, and focused pytest coverage. Existing JSON state files are migrated automatically on first use.
 
+The dashboard also includes allocation pies for security type and currency, account/symbol history charts from stored snapshots, and filters for Activity and Journal.
+
 ### Optional sign-in
 
 Set both `VAULTBOARD_USERNAME` and `VAULTBOARD_PASSWORD` (or `[auth]` in `.streamlit/secrets.toml`) to show an **Authorization** page before the app. Public share links with `?public=1` still work without signing in.

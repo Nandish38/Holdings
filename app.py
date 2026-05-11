@@ -49,6 +49,13 @@ from journal_store import JournalEntry, append_entry, load_journal, today_iso as
 from market_universe import get_universes  # noqa: E402
 from broker_store import BrokerConnection, get_connection, mark_sync, upsert_connection  # noqa: E402
 from plaid_integration import create_link_token, exchange_public_token, investments_holdings, transactions_sync  # noqa: E402
+from portfolio_analytics import (  # noqa: E402
+    allocation_by_field,
+    filter_activity_rows,
+    filter_journal_rows,
+    latest_labels,
+    snapshot_detail_history,
+)
 from portfolio_alerts import core_alerts  # noqa: E402
 from returns_analysis import contribution_adjusted_history, returns_summary  # noqa: E402
 from us_market_watch import (  # noqa: E402
@@ -277,6 +284,23 @@ def pie_accounts_vault(acct: pd.DataFrame, *, reveal: bool) -> go.Figure:
             textinfo="label+percent",
             hovertemplate="<b>%{label}</b><br>CAD: %{value:,.0f}<br>%{percent}<extra></extra>",
         )
+    fig.update_layout(margin=dict(t=36, b=0, l=0, r=0), showlegend=True, legend_font_size=10)
+    return fig
+
+
+def pie_allocation(alloc: pd.DataFrame, label_col: str, title: str, *, reveal: bool) -> go.Figure:
+    if alloc is None or alloc.empty:
+        fig = go.Figure()
+        fig.update_layout(title=dict(text=title), annotations=[dict(text="No rows", showarrow=False, x=0.5, y=0.5)])
+        return fig
+    fig = px.pie(alloc, names=label_col, values="market_value_cad", hole=0.42, title=title)
+    if reveal:
+        fig.update_traces(
+            textinfo="label+percent",
+            hovertemplate="<b>%{label}</b><br>CAD: %{value:,.0f}<br>%{percent}<extra></extra>",
+        )
+    else:
+        fig.update_traces(textinfo="percent", hovertemplate="<b>%{label}</b><br>Share: %{percent}<extra></extra>")
     fig.update_layout(margin=dict(t=36, b=0, l=0, r=0), showlegend=True, legend_font_size=10)
     return fig
 
@@ -605,6 +629,21 @@ def main() -> None:
             stx = roll[roll["Security_Type"].map(_is_equity_type)].copy()
             st.plotly_chart(pie_holdings_colored_by_return(stx, "Equities", reveal=reveal), use_container_width=True)
 
+        st.subheader("Allocation")
+        a1, a2 = st.columns([1, 1])
+        with a1:
+            security_alloc = allocation_by_field(df_v, "Security Type", usd_cad)
+            st.plotly_chart(
+                pie_allocation(security_alloc, "Security Type", "By security type", reveal=reveal),
+                use_container_width=True,
+            )
+        with a2:
+            currency_alloc = allocation_by_field(df_v, "mv_ccy", usd_cad)
+            st.plotly_chart(
+                pie_allocation(currency_alloc, "mv_ccy", "By currency", reveal=reveal),
+                use_container_width=True,
+            )
+
         st.subheader("Holdings")
         show_cols = [
             c
@@ -696,6 +735,59 @@ def main() -> None:
                 ]:
                     show_h[c] = "·······"
             st.dataframe(show_h, use_container_width=True, hide_index=True)
+
+            st.subheader("Account & symbol history")
+            h1, h2 = st.columns([1, 1])
+            with h1:
+                acct_hist = snapshot_detail_history(hist, "by_account_cad")
+                if acct_hist.empty:
+                    st.caption("No account detail history yet.")
+                else:
+                    account_choices = sorted(acct_hist["label"].astype(str).unique().tolist())
+                    default_accounts = latest_labels(acct_hist, limit=5)
+                    selected_accounts = st.multiselect(
+                        "Accounts",
+                        account_choices,
+                        default=[x for x in default_accounts if x in account_choices],
+                    )
+                    plot_acct = acct_hist[acct_hist["label"].isin(selected_accounts)].copy()
+                    if not plot_acct.empty:
+                        y_account = "market_value_cad" if reveal else "index"
+                        fig_a = px.line(
+                            plot_acct,
+                            x="date",
+                            y=y_account,
+                            color="label",
+                            markers=True,
+                            title="Accounts over time" if reveal else "Accounts indexed",
+                        )
+                        fig_a.update_layout(margin=dict(t=40, b=0, l=0, r=0))
+                        st.plotly_chart(fig_a, use_container_width=True)
+            with h2:
+                sym_hist = snapshot_detail_history(hist, "by_symbol_cad")
+                if sym_hist.empty:
+                    st.caption("No symbol detail history yet.")
+                else:
+                    symbol_choices = sorted(sym_hist["label"].astype(str).unique().tolist())
+                    default_symbols = latest_labels(sym_hist, limit=8)
+                    selected_symbols = st.multiselect(
+                        "Symbols",
+                        symbol_choices,
+                        default=[x for x in default_symbols if x in symbol_choices],
+                    )
+                    plot_sym = sym_hist[sym_hist["label"].isin(selected_symbols)].copy()
+                    if not plot_sym.empty:
+                        y_symbol = "market_value_cad" if reveal else "index"
+                        fig_s = px.line(
+                            plot_sym,
+                            x="date",
+                            y=y_symbol,
+                            color="label",
+                            markers=True,
+                            title="Symbols over time" if reveal else "Symbols indexed",
+                        )
+                        fig_s.update_layout(margin=dict(t=40, b=0, l=0, r=0))
+                        st.plotly_chart(fig_s, use_container_width=True)
 
     elif view == "Markets":
         st.subheader("Markets")
@@ -791,7 +883,39 @@ def main() -> None:
         if not rows:
             st.caption("No activity yet.")
         else:
-            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            adf = pd.DataFrame(rows)
+            adf["_when"] = pd.to_datetime(adf.get("when"), errors="coerce")
+            valid_dates = adf["_when"].dropna()
+            default_start = valid_dates.min().date() if not valid_dates.empty else pd.to_datetime(today_iso_activity()).date()
+            default_end = valid_dates.max().date() if not valid_dates.empty else pd.to_datetime(today_iso_activity()).date()
+            f1, f2, f3 = st.columns([1, 1, 1.6])
+            with f1:
+                kinds = sorted({str(x) for x in adf.get("kind", pd.Series(dtype=str)).dropna().unique()})
+                kind_filter = st.selectbox("Filter type", ["All"] + kinds)
+            with f2:
+                activity_dates = st.date_input(
+                    "Activity date range",
+                    value=(default_start, default_end),
+                    key="activity_date_range",
+                )
+            with f3:
+                activity_query = st.text_input("Search activity", placeholder="Symbol, note, or type")
+            if isinstance(activity_dates, tuple) and len(activity_dates) == 2:
+                activity_start, activity_end = activity_dates
+            else:
+                activity_start = activity_end = activity_dates
+            filtered_activity = filter_activity_rows(
+                rows,
+                kind=None if kind_filter == "All" else kind_filter,
+                query=activity_query,
+                start_date=activity_start,
+                end_date=activity_end,
+            )
+            st.caption(f"Showing {len(filtered_activity)} of {len(rows)} activity rows.")
+            if filtered_activity:
+                st.dataframe(pd.DataFrame(filtered_activity), use_container_width=True, hide_index=True)
+            else:
+                st.info("No activity rows match the filters.")
 
     elif view == "Journal":
         st.subheader("Journal")
@@ -824,7 +948,38 @@ def main() -> None:
         if not rows:
             st.caption("No entries yet.")
         else:
-            for r in rows[:30]:
+            jdf = pd.DataFrame(rows)
+            jdf["_when"] = pd.to_datetime(jdf.get("when"), errors="coerce")
+            valid_dates = jdf["_when"].dropna()
+            default_start = valid_dates.min().date() if not valid_dates.empty else pd.to_datetime(today_iso_journal()).date()
+            default_end = valid_dates.max().date() if not valid_dates.empty else pd.to_datetime(today_iso_journal()).date()
+            f1, f2, f3 = st.columns([1, 1, 1.6])
+            with f1:
+                cats = sorted({str(x) for x in jdf.get("category", pd.Series(dtype=str)).dropna().unique()})
+                category_filter = st.selectbox("Filter category", ["All"] + cats)
+            with f2:
+                journal_dates = st.date_input(
+                    "Journal date range",
+                    value=(default_start, default_end),
+                    key="journal_date_range",
+                )
+            with f3:
+                journal_query = st.text_input("Search journal", placeholder="Symbol, title, body, or category")
+            if isinstance(journal_dates, tuple) and len(journal_dates) == 2:
+                journal_start, journal_end = journal_dates
+            else:
+                journal_start = journal_end = journal_dates
+            filtered_journal = filter_journal_rows(
+                rows,
+                category=None if category_filter == "All" else category_filter,
+                query=journal_query,
+                start_date=journal_start,
+                end_date=journal_end,
+            )
+            st.caption(f"Showing {min(len(filtered_journal), 30)} of {len(filtered_journal)} matching entries.")
+            if not filtered_journal:
+                st.info("No journal entries match the filters.")
+            for r in filtered_journal[:30]:
                 t = str(r.get("title") or "Untitled")
                 when = str(r.get("when") or "")
                 cat = str(r.get("category") or "")
