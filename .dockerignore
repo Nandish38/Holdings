@@ -13,6 +13,9 @@ ENV/
 .devcontainer/
 
 .streamlit/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
 
 # Local artifacts / runtime state
 _uploaded_holdings.csv

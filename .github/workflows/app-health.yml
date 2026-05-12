@@ -48,6 +48,9 @@ jobs:
         run: |
           python -m py_compile \
             app.py \
+            backend/main.py \
+            backend/schemas.py \
+            backend/services.py \
             market_universe.py \
             portfolio_loader.py \
             portfolio_analytics.py \
@@ -77,3 +80,30 @@ jobs:
 
           print("Import smoke OK")
           PY
+
+  frontend:
+    name: Frontend typecheck and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build

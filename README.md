@@ -12,6 +12,22 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+### Run the FastAPI + Next.js rebuild
+
+The Streamlit app remains available while the multi-language rebuild reaches feature parity.
+
+```bash
+# Terminal 1: Python API
+uvicorn backend.main:app --reload --port 8000
+
+# Terminal 2: Next.js frontend
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000` for the Next.js dashboard. The frontend reads `NEXT_PUBLIC_API_BASE_URL` and defaults to `http://localhost:8000`.
+
 Copy `.env.example` to `.env` if you use OpenAI commentary.
 If you connect a broker via Plaid, also set `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `PLAID_ENV`.
 
@@ -57,7 +73,7 @@ Place a holdings CSV path in the sidebar or upload a file. A small sample lives 
 
 ## Health checks and alerts
 
-GitHub Actions runs `.github/workflows/app-health.yml` on pushes, pull requests, manual dispatch, and every 6 hours. It installs dependencies, runs `pytest`, compiles core modules, and imports production modules. Enable GitHub email notifications for failed Actions runs to receive alerts when the app health check fails.
+GitHub Actions runs `.github/workflows/app-health.yml` on pushes, pull requests, manual dispatch, and every 6 hours. It installs dependencies, runs `pytest`, compiles core modules, imports production modules, and checks the Next.js frontend with `npm run typecheck` and `npm run build`. Enable GitHub email notifications for failed Actions runs to receive alerts when the app health check fails.
 
 ## Deploy on AWS ECS (Fargate)
 
