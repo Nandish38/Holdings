@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: app-health-${{ github.ref }}
-  cancel-in-progress: true
+  group: app-health-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: false
 
 jobs:
   tests:
