@@ -6,7 +6,6 @@
     "codespaces": {
       "openFiles": [
         "README.md",
-        "app.py",
         "backend/main.py",
         "frontend/app/page.tsx"
       ]
@@ -21,7 +20,8 @@
   },
   "updateContentCommand": "[ -f packages.txt ] && sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y <packages.txt; [ -f requirements.txt ] && pip3 install --user -r requirements.txt; [ -f frontend/package.json ] && cd frontend && npm install; echo '✅ Packages installed and Requirements met'",
   "postAttachCommand": {
-    "server": "streamlit run app.py --server.enableCORS false --server.enableXsrfProtection false"
+    "api": "uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload",
+    "frontend": "cd frontend && npm run dev -- --hostname 0.0.0.0"
   },
   "portsAttributes": {
     "3000": {
@@ -31,15 +31,10 @@
     "8000": {
       "label": "FastAPI backend",
       "onAutoForward": "notify"
-    },
-    "8501": {
-      "label": "Streamlit app",
-      "onAutoForward": "openPreview"
     }
   },
   "forwardPorts": [
     3000,
-    8000,
-    8501
+    8000
   ]
 }

@@ -47,7 +47,6 @@ jobs:
       - name: Compile core modules
         run: |
           python -m py_compile \
-            app.py \
             backend/main.py \
             backend/schemas.py \
             backend/services.py \
@@ -107,3 +106,17 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+  docker:
+    name: Docker image smoke builds
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -f backend/Dockerfile -t holdings-backend:ci .
+
+      - name: Build frontend image
+        run: docker build -f frontend/Dockerfile -t holdings-frontend:ci frontend

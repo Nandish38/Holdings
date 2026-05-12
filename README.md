@@ -1,6 +1,6 @@
 # Holdings dashboard
 
-Streamlit app for Canadian broker CSV exports: allocation, NYSE+TSX calendar, goal sizing, contribution-adjusted snapshot history, a **US movers** watchlist (Yahoo prices + analyst targets), and optional OpenAI flags.
+Next.js + FastAPI dashboard for Canadian broker CSV exports: allocation, NYSE+TSX calendar data, goal sizing, contribution-adjusted snapshot history, market universes, activity, journal, and deterministic portfolio alerts.
 
 ## Run locally
 
@@ -9,14 +9,7 @@ python -m venv .venv
 # Windows:
 .venv\Scripts\activate
 pip install -r requirements.txt
-streamlit run app.py
-```
 
-### Run the FastAPI + Next.js rebuild
-
-The Streamlit app remains available while the multi-language rebuild reaches feature parity.
-
-```bash
 # Terminal 1: Python API
 uvicorn backend.main:app --reload --port 8000
 
@@ -26,10 +19,9 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` for the Next.js dashboard. The frontend reads `NEXT_PUBLIC_API_BASE_URL` and defaults to `http://localhost:8000`.
+Open `http://localhost:3000` for the dashboard. The frontend reads `API_BASE_URL` or `NEXT_PUBLIC_API_BASE_URL` and defaults to `http://localhost:8000`.
 
-Copy `.env.example` to `.env` if you use OpenAI commentary.
-If you connect a broker via Plaid, also set `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `PLAID_ENV`.
+Copy `.env.example` to `.env` if you use OpenAI commentary. If you connect a broker via Plaid, also set `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `PLAID_ENV`.
 
 ### Local persistence
 
@@ -41,31 +33,7 @@ If older JSON files such as `portfolio_goals.json`, `portfolio_snapshots.json`, 
 
 This upgrade adds SQLite-backed app state, contribution-adjusted returns, deterministic portfolio alerts, and focused pytest coverage. Existing JSON state files are migrated automatically on first use.
 
-The dashboard also includes allocation pies for security type and currency, account/symbol history charts from stored snapshots, and filters for Activity and Journal.
-
-### Optional sign-in
-
-Set both `VAULTBOARD_USERNAME` and `VAULTBOARD_PASSWORD` (or `[auth]` in `.streamlit/secrets.toml`) to show an **Authorization** page before the app. Public share links with `?public=1` still work without signing in.
-
-## Deploy on Streamlit Community Cloud
-
-1. Push this repository to GitHub (for example `https://github.com/Nandish38/Holdings`).
-2. Sign in at [Streamlit Community Cloud](https://share.streamlit.io/) with GitHub.
-3. Click **New app** → pick the **Holdings** repository, branch **main**.
-4. Set **Main file path** to `app.py` (repo root).
-5. **Advanced settings** → **Python version** 3.12 (or the version shown in Cloud) if the default build fails.
-6. Under **Secrets**, paste (adjust as needed):
-
-   ```toml
-   OPENAI_API_KEY = "sk-..."
-   OPENAI_MODEL = "gpt-4o-mini"
-   ```
-
-   Leave secrets empty if you only use rule-based flags.
-
-7. Deploy. Cloud will install `requirements.txt` and run `streamlit run app.py`.
-
-**Note:** `vaultboard.db` is created at runtime on Cloud; it can reset when the app sleeps unless you add external storage later.
+The dashboard also includes allocation views for security type and currency, account/symbol history from stored snapshots, and filters for Activity and Journal.
 
 ## Data
 
@@ -73,12 +41,8 @@ Place a holdings CSV path in the sidebar or upload a file. A small sample lives 
 
 ## Health checks and alerts
 
-GitHub Actions runs `.github/workflows/app-health.yml` on pushes, pull requests, manual dispatch, and every 6 hours. It installs dependencies, runs `pytest`, compiles core modules, imports production modules, and checks the Next.js frontend with `npm run typecheck` and `npm run build`. Enable GitHub email notifications for failed Actions runs to receive alerts when the app health check fails.
+GitHub Actions runs `.github/workflows/app-health.yml` on pushes, pull requests, manual dispatch, and every 6 hours. It installs dependencies, runs `pytest`, compiles core modules, imports production modules, checks the Next.js frontend with `npm run typecheck` and `npm run build`, and smoke-builds both Docker images. Enable GitHub email notifications for failed Actions runs to receive alerts when the app health check fails.
 
 ## Deploy on AWS ECS (Fargate)
 
-This repo includes a `Dockerfile` and an ECS guide at `ecs/README.md`.
-
-### Auth0 in front of the app (Option 1)
-
-Use **oauth2-proxy** so Auth0 handles login before traffic reaches Streamlit. See **`deploy/oauth2-proxy/README.md`** and **`deploy/oauth2-proxy/docker-compose.yml`** for a local stack and ECS-oriented notes.
+This repo includes production Dockerfiles for the FastAPI backend and Next.js frontend, plus a two-container Fargate task template. See `ecs/README.md`.

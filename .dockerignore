@@ -13,7 +13,6 @@ ENV/
 .github/
 .devcontainer/
 
-.streamlit/
 frontend/node_modules/
 frontend/.next/
 frontend/out/
@@ -29,7 +28,5 @@ vaultboard.db
 vaultboard.db-*
 *.sqlite
 *.sqlite3
-
-# If you want the sample CSV inside the container, remove this ignore line
-data/
+runtime/
 
