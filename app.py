@@ -50,11 +50,13 @@ from market_universe import get_universes  # noqa: E402
 from broker_store import BrokerConnection, get_connection, mark_sync, upsert_connection  # noqa: E402
 from plaid_integration import create_link_token, exchange_public_token, investments_holdings, transactions_sync  # noqa: E402
 from portfolio_analytics import (  # noqa: E402
+    account_market_value_cad,
     allocation_by_field,
     filter_activity_rows,
     filter_journal_rows,
     latest_labels,
     snapshot_detail_history,
+    symbol_weight_cad,
 )
 from portfolio_alerts import core_alerts  # noqa: E402
 from returns_analysis import contribution_adjusted_history, returns_summary  # noqa: E402
@@ -144,38 +146,6 @@ def _cached_us_watch(sort_by: str, top_n: int, custom: str, universe_key: str) -
         base = list(uni[universe_key].symbols)
     tickers: tuple[str, ...] = tuple(dict.fromkeys(base + extra))
     return build_us_watch_table(sort_by=sort_by, top_n=int(top_n), tickers=tickers)
-
-
-def _mv_cad_row(row: pd.Series, usd_cad: float) -> float:
-    mv = row.get("Market Value")
-    if mv is None or pd.isna(mv):
-        return 0.0
-    ccy = str(row.get("mv_ccy", "CAD")).upper()
-    v = float(mv)
-    return v * usd_cad if ccy == "USD" else v
-
-
-def account_market_value_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
-    keys = [k for k in ["Account Name", "Account Type", "Account Number"] if k in df.columns]
-    if not keys:
-        keys = ["Account Name"]
-    t = df.copy()
-    t["_mv_cad"] = t.apply(lambda r: _mv_cad_row(r, usd_cad), axis=1)
-    g = t.groupby(keys, dropna=False)["_mv_cad"].sum().reset_index(name="market_value_cad")
-    g["label"] = g.apply(
-        lambda r: " · ".join(str(r[k]) for k in keys if pd.notna(r[k]) and str(r[k]).strip()),
-        axis=1,
-    )
-    return g
-
-
-def symbol_weight_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
-    t = df.copy()
-    t["_mv_cad"] = t.apply(lambda r: _mv_cad_row(r, usd_cad), axis=1)
-    g = t.groupby("Symbol", dropna=False)["_mv_cad"].sum().reset_index(name="market_value_cad")
-    total = float(g["market_value_cad"].sum()) or 1.0
-    g["weight_pct"] = g["market_value_cad"] / total * 100.0
-    return g.sort_values("market_value_cad", ascending=False)
 
 
 def _is_equity_type(st: object) -> bool:

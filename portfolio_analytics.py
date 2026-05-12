@@ -8,6 +8,40 @@ from typing import Any
 import pandas as pd
 
 
+def market_value_cad_row(row: pd.Series, usd_cad: float) -> float:
+    mv = row.get("Market Value")
+    if mv is None or pd.isna(mv):
+        return 0.0
+    ccy = str(row.get("mv_ccy", "CAD")).upper()
+    value = float(mv)
+    return value * usd_cad if ccy == "USD" else value
+
+
+def account_market_value_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
+    keys = [k for k in ["Account Name", "Account Type", "Account Number"] if k in df.columns]
+    if not keys:
+        keys = ["Account Name"]
+    t = df.copy()
+    t["_mv_cad"] = t.apply(lambda r: market_value_cad_row(r, usd_cad), axis=1)
+    g = t.groupby(keys, dropna=False)["_mv_cad"].sum().reset_index(name="market_value_cad")
+    g["label"] = g.apply(
+        lambda r: " · ".join(str(r[k]) for k in keys if pd.notna(r[k]) and str(r[k]).strip()),
+        axis=1,
+    )
+    return g.sort_values("market_value_cad", ascending=False)
+
+
+def symbol_weight_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
+    if df is None or df.empty or "Symbol" not in df.columns:
+        return pd.DataFrame(columns=["Symbol", "market_value_cad", "weight_pct"])
+    t = df.copy()
+    t["_mv_cad"] = t.apply(lambda r: market_value_cad_row(r, usd_cad), axis=1)
+    g = t.groupby("Symbol", dropna=False)["_mv_cad"].sum().reset_index(name="market_value_cad")
+    total = float(g["market_value_cad"].sum()) or 1.0
+    g["weight_pct"] = g["market_value_cad"] / total * 100.0
+    return g.sort_values("market_value_cad", ascending=False)
+
+
 def allocation_by_field(df: pd.DataFrame, field: str, usd_cad: float) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame(columns=[field, "market_value_cad", "weight_pct"])
@@ -15,7 +49,7 @@ def allocation_by_field(df: pd.DataFrame, field: str, usd_cad: float) -> pd.Data
         return pd.DataFrame(columns=[field, "market_value_cad", "weight_pct"])
 
     t = df.copy()
-    t["_mv_cad"] = t.apply(lambda r: _mv_cad_row(r, usd_cad), axis=1)
+    t["_mv_cad"] = t.apply(lambda r: market_value_cad_row(r, usd_cad), axis=1)
     t[field] = t[field].fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
     g = t.groupby(field, dropna=False)["_mv_cad"].sum().reset_index(name="market_value_cad")
     g = g[g["market_value_cad"].astype(float) > 0].copy()
@@ -91,15 +125,6 @@ def filter_journal_rows(
         and (not category or str(row.get("category") or "").lower() == category.lower())
         and _matches_query(row, query, fields=("symbol", "title", "body", "category"))
     ]
-
-
-def _mv_cad_row(row: pd.Series, usd_cad: float) -> float:
-    mv = row.get("Market Value")
-    if mv is None or pd.isna(mv):
-        return 0.0
-    ccy = str(row.get("mv_ccy", "CAD")).upper()
-    value = float(mv)
-    return value * usd_cad if ccy == "USD" else value
 
 
 def _date_in_range(value: Any, start_date: date | None, end_date: date | None) -> bool:

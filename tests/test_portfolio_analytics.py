@@ -3,6 +3,7 @@ from datetime import date
 import pandas as pd
 
 from portfolio_analytics import (
+    account_market_value_cad,
     allocation_by_field,
     filter_activity_rows,
     filter_journal_rows,
@@ -24,6 +25,24 @@ def test_allocation_by_field_converts_usd_to_cad() -> None:
     equity = out.loc[out["Security Type"] == "EQUITY"].iloc[0]
     assert equity["market_value_cad"] == 150.0
     assert round(float(out["weight_pct"].sum()), 6) == 100.0
+
+
+def test_account_market_value_labels_match_shared_app_format() -> None:
+    df = pd.DataFrame(
+        [
+            {
+                "Account Name": "TFSA",
+                "Account Type": "Tax Free",
+                "Account Number": "1234",
+                "Market Value": 100.0,
+                "mv_ccy": "CAD",
+            }
+        ]
+    )
+
+    out = account_market_value_cad(df, usd_cad=1.0)
+
+    assert out["label"].iloc[0] == "TFSA · Tax Free · 1234"
 
 
 def test_snapshot_detail_history_indexes_each_label() -> None:
