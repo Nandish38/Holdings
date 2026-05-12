@@ -14,7 +14,7 @@ from history_store import load_snapshots, snapshots_to_dataframe
 from journal_store import JournalEntry, append_entry, load_journal
 from market_universe import get_universes
 from portfolio_alerts import core_alerts
-from portfolio_analytics import allocation_by_field, snapshot_detail_history
+from portfolio_analytics import account_market_value_cad, allocation_by_field, market_value_cad_row, snapshot_detail_history, symbol_weight_cad
 from portfolio_loader import approx_total_market_value_cad, load_holdings_csv, parse_as_of_date
 from returns_analysis import contribution_adjusted_history, returns_summary
 
@@ -46,7 +46,7 @@ def portfolio_summary(*, usd_cad: float = 1.38, path: str | Path | None = None) 
 def holdings_rows(*, usd_cad: float = 1.38, path: str | Path | None = None) -> list[dict[str, Any]]:
     df, _ = load_current_holdings(path)
     out = df.copy()
-    out["market_value_cad"] = out.apply(lambda r: mv_cad_row(r, usd_cad), axis=1)
+    out["market_value_cad"] = out.apply(lambda r: market_value_cad_row(r, usd_cad), axis=1)
     return frame_records(out)
 
 
@@ -128,37 +128,6 @@ def alerts_payload(*, usd_cad: float = 1.38, path: str | Path | None = None) -> 
             }
         )
     return out
-
-
-def account_market_value_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
-    keys = [k for k in ["Account Name", "Account Type", "Account Number"] if k in df.columns]
-    if not keys:
-        keys = ["Account Name"]
-    t = df.copy()
-    t["_mv_cad"] = t.apply(lambda r: mv_cad_row(r, usd_cad), axis=1)
-    g = t.groupby(keys, dropna=False)["_mv_cad"].sum().reset_index(name="market_value_cad")
-    g["label"] = g.apply(
-        lambda r: " - ".join(str(r[k]) for k in keys if pd.notna(r[k]) and str(r[k]).strip()),
-        axis=1,
-    )
-    return g.sort_values("market_value_cad", ascending=False)
-
-
-def symbol_weight_cad(df: pd.DataFrame, usd_cad: float) -> pd.DataFrame:
-    t = df.copy()
-    t["_mv_cad"] = t.apply(lambda r: mv_cad_row(r, usd_cad), axis=1)
-    g = t.groupby("Symbol", dropna=False)["_mv_cad"].sum().reset_index(name="market_value_cad")
-    total = float(g["market_value_cad"].sum()) or 1.0
-    g["weight_pct"] = g["market_value_cad"] / total * 100.0
-    return g.sort_values("market_value_cad", ascending=False)
-
-
-def mv_cad_row(row: pd.Series, usd_cad: float) -> float:
-    mv = row.get("Market Value")
-    if mv is None or pd.isna(mv):
-        return 0.0
-    value = float(mv)
-    return value * usd_cad if str(row.get("mv_ccy", "CAD")).upper() == "USD" else value
 
 
 def frame_records(df: pd.DataFrame) -> list[dict[str, Any]]:

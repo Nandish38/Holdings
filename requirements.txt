@@ -1,8 +1,6 @@
-streamlit>=1.32
 fastapi>=0.115
 uvicorn[standard]>=0.30
 pandas>=2.0
-plotly>=5.18
 pandas_market_calendars>=4.4
 python-dotenv>=1.0
 openai>=1.0
