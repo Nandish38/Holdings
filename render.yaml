@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: holdings-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: CORS_ALLOW_ORIGINS
+        value: ""
+      - key: VAULTBOARD_DB_PATH
+        value: /tmp/vaultboard.db
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PLAID_CLIENT_ID
+        sync: false
+      - key: PLAID_SECRET
+        sync: false
+      - key: PLAID_ENV
+        value: sandbox
