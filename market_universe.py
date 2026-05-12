@@ -9,6 +9,7 @@ Notes:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
@@ -17,6 +18,8 @@ import requests
 
 _ROOT = Path(__file__).resolve().parent
 _DATA = _ROOT / "data"
+FALLBACK_SP500_SYMBOLS = ("AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "BRK-B", "LLY", "AVGO", "TSLA")
+FALLBACK_TSX_SYMBOLS = ("SHOP.TO", "RY.TO", "TD.TO", "ENB.TO", "BNS.TO", "BN.TO", "CNR.TO", "BMO.TO", "CP.TO", "TRI.TO")
 
 
 @dataclass(frozen=True)
@@ -38,7 +41,7 @@ def _download_text(url: str, *, timeout_s: int = 20) -> str:
 
 def _read_html_table(html_text: str) -> pd.DataFrame:
     # Use pure-Python parser stack (html5lib + bs4) to avoid a hard lxml dependency.
-    tables = pd.read_html(html_text, flavor="html5lib")
+    tables = pd.read_html(StringIO(html_text), flavor="html5lib")
     if not tables:
         return pd.DataFrame()
     # Heuristic: biggest table is usually constituents.
@@ -71,11 +74,18 @@ def load_sp500_symbols(*, refresh: bool = False) -> tuple[str, ...]:
             if syms:
                 return syms
 
-    html_text = _download_text("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
-    t = _read_html_table(html_text)
+    try:
+        html_text = _download_text("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
+        t = _read_html_table(html_text)
+    except Exception:
+        return _cached_or_fallback(cache, FALLBACK_SP500_SYMBOLS)
+    if t.empty:
+        return _cached_or_fallback(cache, FALLBACK_SP500_SYMBOLS)
     # Expect a Symbol column
     col = "Symbol" if "Symbol" in t.columns else t.columns[0]
     syms = _normalize_symbols(t[col])
+    if not syms:
+        return _cached_or_fallback(cache, FALLBACK_SP500_SYMBOLS)
     pd.DataFrame({"Symbol": list(syms)}).to_csv(cache, index=False)
     return syms
 
@@ -93,8 +103,13 @@ def load_tsx_composite_symbols(*, refresh: bool = False) -> tuple[str, ...]:
             if syms:
                 return syms
 
-    html_text = _download_text("https://en.wikipedia.org/wiki/S%26P/TSX_Composite_Index")
-    t = _read_html_table(html_text)
+    try:
+        html_text = _download_text("https://en.wikipedia.org/wiki/S%26P/TSX_Composite_Index")
+        t = _read_html_table(html_text)
+    except Exception:
+        return _cached_or_fallback(cache, FALLBACK_TSX_SYMBOLS)
+    if t.empty:
+        return _cached_or_fallback(cache, FALLBACK_TSX_SYMBOLS)
 
     # Wikipedia tables vary; try a few common headings.
     candidate_cols = [
@@ -126,6 +141,8 @@ def load_tsx_composite_symbols(*, refresh: bool = False) -> tuple[str, ...]:
             s = s + ".TO"
         out.append(s.replace(".", "."))
     syms = tuple(dict.fromkeys(out))
+    if not syms:
+        return _cached_or_fallback(cache, FALLBACK_TSX_SYMBOLS)
     pd.DataFrame({"Symbol": list(syms)}).to_csv(cache, index=False)
     return syms
 
@@ -139,4 +156,17 @@ def get_universes(*, refresh: bool = False) -> list[Universe]:
         Universe("tsx", f"TSX Composite ({len(tx)})", tx),
         Universe("both", f"S&P 500 + TSX Composite ({len(sp) + len(tx)})", tuple(dict.fromkeys(list(sp) + list(tx)))),
     ]
+
+
+def _cached_or_fallback(cache: Path, fallback: tuple[str, ...]) -> tuple[str, ...]:
+    if cache.exists():
+        try:
+            df = pd.read_csv(cache)
+            if "Symbol" in df.columns:
+                syms = _normalize_symbols(df["Symbol"])
+                if syms:
+                    return syms
+        except Exception:
+            pass
+    return fallback
 
