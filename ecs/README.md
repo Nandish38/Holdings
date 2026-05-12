@@ -1,6 +1,8 @@
 ## Deploy to AWS ECS (Fargate)
 
-This repo is a Streamlit app. The recommended AWS path is:
+This repo currently ships a Streamlit container. The FastAPI + Next.js rebuild is available for local development, but this ECS guide still describes the Streamlit path on port `8501`.
+
+The recommended AWS path for the current container is:
 
 - **ECR** for container images
 - **ECS Fargate** for running tasks
@@ -41,6 +43,10 @@ docker push <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/holdings:latest
    - Attach an **ALB**
    - Target group health check path: `/`
 4. In the ALB listener, route traffic to the target group.
+
+### FastAPI + Next.js note
+
+The newer FastAPI backend (`8000`) and Next.js frontend (`3000`) are not yet packaged by this Dockerfile. For AWS, deploy them as separate services/containers or add a future multi-stage build before routing traffic through the ALB.
 
 ### Secrets
 
