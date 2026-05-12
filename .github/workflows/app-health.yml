@@ -1,0 +1,79 @@
+name: App health checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Every 6 hours. GitHub emails subscribed users when scheduled runs fail.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-health-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests and import smoke
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m pytest
+
+      - name: Compile core modules
+        run: |
+          python -m py_compile \
+            app.py \
+            market_universe.py \
+            portfolio_loader.py \
+            portfolio_analytics.py \
+            portfolio_alerts.py \
+            returns_analysis.py \
+            db_store.py
+
+      - name: Import production modules
+        run: |
+          python - <<'PY'
+          import activity_store
+          import ai_flags
+          import broker_store
+          import contributions
+          import db_store
+          import goals_store
+          import history_store
+          import journal_store
+          import market_calendar
+          import market_universe
+          import plaid_integration
+          import portfolio_alerts
+          import portfolio_analytics
+          import portfolio_loader
+          import returns_analysis
+          import us_market_watch
+
+          print("Import smoke OK")
+          PY

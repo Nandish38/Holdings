@@ -55,6 +55,10 @@ Set both `VAULTBOARD_USERNAME` and `VAULTBOARD_PASSWORD` (or `[auth]` in `.strea
 
 Place a holdings CSV path in the sidebar or upload a file. A small sample lives in `data/holdings-report-2026-04-18.csv`.
 
+## Health checks and alerts
+
+GitHub Actions runs `.github/workflows/app-health.yml` on pushes, pull requests, manual dispatch, and every 6 hours. It installs dependencies, runs `pytest`, compiles core modules, and imports production modules. Enable GitHub email notifications for failed Actions runs to receive alerts when the app health check fails.
+
 ## Deploy on AWS ECS (Fargate)
 
 This repo includes a `Dockerfile` and an ECS guide at `ecs/README.md`.
