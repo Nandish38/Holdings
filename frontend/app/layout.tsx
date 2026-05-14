@@ -1,16 +1,5 @@
-import Link from "next/link";
+import { SidebarNav } from "@/components/SidebarNav";
 import "./styles.css";
-
-const nav = [
-  ["Dashboard", "/"],
-  ["Portfolio", "/portfolio"],
-  ["Returns", "/returns"],
-  ["Markets", "/markets"],
-  ["Activity", "/activity"],
-  ["Journal", "/journal"],
-  ["Goals", "/goals"],
-  ["Alerts", "/alerts"]
-];
 
 export const metadata = {
   title: "Vaultboard",
@@ -27,13 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span>Vaultboard</span>
               <small>Next.js + FastAPI</small>
             </div>
-            <nav>
-              {nav.map(([label, href]) => (
-                <Link href={href} key={href}>
-                  {label}
-                </Link>
-              ))}
-            </nav>
+            <SidebarNav />
           </aside>
           <main className="content">{children}</main>
         </div>

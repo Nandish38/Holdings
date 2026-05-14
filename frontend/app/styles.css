@@ -41,6 +41,7 @@ a {
   position: sticky;
   top: 0;
   height: 100vh;
+  z-index: 2;
 }
 
 .brand {
@@ -61,26 +62,36 @@ a {
   color: var(--muted);
 }
 
-nav {
+.sidebarNav {
   display: grid;
   gap: 8px;
 }
 
-nav a {
+.sidebarNav .navLink {
+  display: block;
   border: 1px solid transparent;
   border-radius: 12px;
   color: var(--muted);
   padding: 11px 12px;
+  cursor: pointer;
 }
 
-nav a:hover {
+.sidebarNav .navLink:hover {
   border-color: var(--line);
   background: var(--panel);
   color: var(--text);
 }
 
+.sidebarNav .navLink.active {
+  border-color: var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
 .content {
   padding: 34px;
+  position: relative;
+  z-index: 1;
 }
 
 .hero {
@@ -231,7 +242,45 @@ th {
     position: static;
   }
 
-  nav {
+  .sidebarNav {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+.errorShell {
+  max-width: 640px;
+  margin: 48px auto;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(22, 27, 34, 0.92);
+}
+
+.errorShell h1 {
+  margin-top: 0;
+}
+
+.errorDetail {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.retryBtn {
+  margin-top: 16px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retryBtn:hover {
+  border-color: var(--accent);
 }
