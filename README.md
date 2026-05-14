@@ -75,16 +75,17 @@ Render free services may sleep after inactivity, so the first request after a qu
 1. In Vercel, import the same GitHub repository.
 2. Set **Root Directory** to `frontend`.
 3. Keep the default Next.js build settings, or use the commands in `frontend/vercel.json`.
-4. Add this environment variable:
-   - `API_BASE_URL=https://<your-render-backend>.onrender.com`
-5. Deploy and copy the Vercel frontend URL, for example `https://holdings-dashboard.vercel.app`.
+4. Either rely on the committed `frontend/.env.production` (default `API_BASE_URL` for the sample Render host), **or** add the same key in Vercel **Environment Variables** to override without a code change.
+5. Deploy and copy the Vercel frontend URL, for example `https://holdings-amber.vercel.app`.
 
 ### 3. Connect CORS
 
-After the Vercel URL exists, update the Render backend environment variable:
+`render.yaml` sets a default `CORS_ALLOW_ORIGINS` for the production and preview hostnames used in this project. If your Vercel hostname differs, edit `render.yaml` or set `CORS_ALLOW_ORIGINS` in the Render dashboard, then redeploy the API.
+
+If you created the Render service **without** a Blueprint, paste the same value into Render → **Environment** manually:
 
 ```text
-CORS_ALLOW_ORIGINS=https://<your-vercel-app>.vercel.app
+CORS_ALLOW_ORIGINS=https://holdings-amber.vercel.app,https://holdings-6j1v4dw28-nandish38-s-projects.vercel.app
 ```
 
 Redeploy the Render backend, then test:

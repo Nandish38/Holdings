@@ -12,7 +12,7 @@ services:
       - key: OPENAI_MODEL
         value: gpt-4o-mini
       - key: CORS_ALLOW_ORIGINS
-        value: ""
+        value: "https://holdings-amber.vercel.app,https://holdings-6j1v4dw28-nandish38-s-projects.vercel.app"
       - key: VAULTBOARD_DB_PATH
         value: /tmp/vaultboard.db
       - key: OPENAI_API_KEY
